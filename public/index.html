@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orientación Vocacional | UGEL 03 Lima Centro</title>
+    <meta name="description" content="Sistema web de orientación vocacional basado en árboles de decisión para estudiantes de 3.º y 4.º de secundaria.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <nav>
+        <div class="logo">VOCATIONAL<span style="color: var(--primary)">PATH</span></div>
+        <div class="nav-links" id="auth-links">
+            <button class="btn btn-primary" onclick="showAuth('login')">Iniciar Sesión</button>
+        </div>
+        <div class="nav-links" id="user-info" style="display: none;">
+            <span id="user-name">Estudiante</span>
+            <button class="btn" style="color: white" onclick="logout()">Cerrar Sesión</button>
+        </div>
+    </nav>
+
+    <main>
+        <!-- Hero Section -->
+        <section id="hero" class="hero">
+            <h1>Descubre tu Futuro Profesional</h1>
+            <p>Usamos inteligencia artificial mediante árboles de decisión para recomendarte la carrera ideal basada en tus intereses, habilidades y preferencias académicas.</p>
+            <div class="hero-btns">
+                <button class="btn btn-primary" onclick="startTest()">
+                    <i class="fas fa-play"></i> Empezar Test Vocacional
+                </button>
+            </div>
+            <div style="margin-top: 40px; color: var(--text-muted); font-size: 0.9rem;">
+                Proyecto de Tesis | UGEL 03 Lima Centro
+            </div>
+        </section>
+
+        <!-- Auth Modal (Simplified) -->
+        <section id="auth-section" class="survey-container glass" style="max-width: 400px;">
+            <h2 id="auth-title" style="margin-bottom: 20px; text-align: center;">Registrarse</h2>
+            <form id="auth-form" onsubmit="handleAuth(event)">
+                <div style="margin-bottom: 15px;">
+                    <label>Email</label>
+                    <input type="email" id="email" required class="option-btn" style="width: 100%; cursor: text; margin-top: 5px;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label>Contraseña</label>
+                    <input type="password" id="password" required class="option-btn" style="width: 100%; cursor: text; margin-top: 5px;">
+                </div>
+                <div id="name-group" style="margin-bottom: 15px;">
+                    <label>Nombre Completo</label>
+                    <input type="text" id="fullname" class="option-btn" style="width: 100%; cursor: text; margin-top: 5px;">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">Continuar</button>
+                <p style="margin-top: 15px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
+                    <span id="auth-toggle-text">¿Ya tienes cuenta?</span> 
+                    <a href="#" onclick="toggleAuthMode()" id="auth-toggle-link" style="color: var(--accent);">Inicia sesión</a>
+                </p>
+            </form>
+        </section>
+
+        <!-- Survey Section -->
+        <section id="survey" class="survey-container glass">
+            <div id="question-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                <h2 style="color: var(--accent);">Pregunta <span id="current-q">1</span> de 30</h2>
+                <div id="progress-bar" style="width: 200px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
+                    <div id="progress-fill" style="width: 0%; height: 100%; background: var(--primary); border-radius: 4px; transition: var(--transition);"></div>
+                </div>
+            </div>
+            
+            <div id="question-area" class="question-card">
+                <h3 id="question-text" style="font-size: 1.5rem; margin-bottom: 25px;">¿Te gustaría diseñar planos de edificios y puentes?</h3>
+                <div class="options-grid">
+                    <button class="option-btn" onclick="answerQuestion(0)">Nada interesado</button>
+                    <button class="option-btn" onclick="answerQuestion(3)">Poco interesado</button>
+                    <button class="option-btn" onclick="answerQuestion(6)">Interesado</button>
+                    <button class="option-btn" onclick="answerQuestion(10)">Muy interesado</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section id="results" class="results-container glass">
+            <div class="recommendation-header">
+                <p style="text-transform: uppercase; letter-spacing: 2px; color: var(--text-muted); margin-bottom: 10px;">Tu perfil vocacional es:</p>
+                <h2 class="recommendation-title" id="res-category">Ingeniería y Tecnología</h2>
+            </div>
+            
+            <div style="background: rgba(255,255,255,0.03); padding: 30px; border-radius: 15px; margin-bottom: 40px; border-left: 4px solid var(--primary);">
+                <p id="res-description" style="font-size: 1.1rem; line-height: 1.6;">
+                    Muestras un fuerte interés por el funcionamiento de las cosas y la resolución de problemas técnicos.
+                </p>
+            </div>
+
+            <h3 style="margin-bottom: 20px;">Carreras Recomendadas</h3>
+            <div class="careers-grid" id="res-careers">
+                <!-- Careers will be injected here -->
+            </div>
+
+            <div style="text-align: center; margin-top: 50px;">
+                <button class="btn" onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white;">Volver a Empezar</button>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
