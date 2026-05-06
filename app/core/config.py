@@ -31,6 +31,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://apitesis.fanecorp.com",
+        "http://apitesis.fanecorp.com",
     ]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")

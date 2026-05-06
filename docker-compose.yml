@@ -8,8 +8,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: vocational_db
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -23,7 +21,7 @@ services:
       POSTGRES_DB: vocational_db
       SECRET_KEY: "your-super-secret-key"
     ports:
-      - "8000:8000"
+      - "8098:8000"
     depends_on:
       - db
 
