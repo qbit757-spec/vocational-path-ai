@@ -5,6 +5,7 @@ from app.db.base import Base
 # Import all models here for metadata discovery
 from app.db.models.user_model import User
 from app.db.models.question_model import Question
+from app.core import security
 
 async def init_db():
     async with engine.begin() as conn:
@@ -12,11 +13,26 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
         print("Tables created successfully.")
     
-    # Seeding initial questions
     async with AsyncSession(engine) as session:
         from sqlalchemy import select
-        result = await session.execute(select(Question))
-        if not result.scalars().first():
+        
+        # Seeding Admin User
+        user_result = await session.execute(select(User).where(User.role == "admin"))
+        if not user_result.scalars().first():
+            print("Seeding initial admin user...")
+            admin_user = User(
+                email="admin@orientatufuturo.pe",
+                hashed_password=security.get_password_hash("admin123"),
+                full_name="Administrador del Sistema",
+                role="admin",
+                is_active=True
+            )
+            session.add(admin_user)
+            print("Admin user created: admin@orientatufuturo.pe / admin123")
+
+        # Seeding initial questions
+        q_result = await session.execute(select(Question))
+        if not q_result.scalars().first():
             print("Seeding initial questions...")
             initial_questions = [
                 # Realistic
@@ -40,8 +56,9 @@ async def init_db():
             ]
             for q in initial_questions:
                 session.add(Question(**q))
-            await session.commit()
             print("Initial questions seeded.")
+        
+        await session.commit()
 
 if __name__ == "__main__":
     asyncio.run(init_db())
