@@ -86,7 +86,12 @@ async def explain_result(
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(deps.get_current_admin_user)
 ):
-    result = await db.execute(select(VocationalTestResult).where(VocationalTestResult.id == result_id))
+    from sqlalchemy.orm import joinedload
+    result = await db.execute(
+        select(VocationalTestResult)
+        .options(joinedload(VocationalTestResult.user))
+        .where(VocationalTestResult.id == result_id)
+    )
     db_result = result.scalar_one_or_none()
     
     if not db_result:
@@ -97,6 +102,8 @@ async def explain_result(
     
     return {
         "result_id": result_id,
+        "student_email": db_result.user.email if db_result.user else "N/A",
+        "student_name": db_result.user.full_name if db_result.user else "N/A",
         "recommendation": db_result.recommendation,
         "scores": db_result.scores,
         "decision_path": explanation_path
