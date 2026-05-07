@@ -57,15 +57,25 @@ async def view_all_results(
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(deps.get_current_admin_user)
 ):
-    result = await db.execute(select(VocationalTestResult))
+    from app.db.models.user_model import User
+    from sqlalchemy.orm import joinedload
+    
+    # Query with join to get user details
+    query = select(VocationalTestResult).options(joinedload(VocationalTestResult.user))
+    result = await db.execute(query)
+    results = result.scalars().all()
+    
     return [
         {
             "id": r.id, 
             "user_id": r.user_id, 
+            "student_email": r.user.email if r.user else "Usuario eliminado",
+            "student_name": r.user.full_name if r.user else "N/A",
             "recommendation": r.recommendation, 
+            "scores": r.scores,
             "created_at": r.created_at
         }
-        for r in result.scalars().all()
+        for r in results
     ]
 
 from app.services.ml_service import ml_service

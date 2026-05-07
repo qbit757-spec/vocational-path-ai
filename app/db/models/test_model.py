@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.db.base import Base
 
 class VocationalTestResult(Base):
@@ -7,6 +8,8 @@ class VocationalTestResult(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    user = relationship("User", backref="test_results")
     
     # Store the scores (RIASEC) as JSON
     scores = Column(JSON, nullable=False)
