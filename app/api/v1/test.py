@@ -9,7 +9,20 @@ from app.db.models.test_model import VocationalTestResult
 from app.schemas.test_schema import VocationalTestSubmission, VocationalTestResultResponse
 from app.ml.predictor import predictor
 
+from app.db.models.question_model import Question
+
 router = APIRouter()
+
+@router.get("/questions", response_model=List[dict])
+async def get_test_questions(
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Question).where(Question.is_active == True))
+    questions = result.scalars().all()
+    return [
+        {"id": q.id, "text": q.text, "category": q.category}
+        for q in questions
+    ]
 
 # Justification descriptions based on RIASEC categories
 CAREER_INFO = {

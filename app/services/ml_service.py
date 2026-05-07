@@ -142,4 +142,51 @@ class MLService:
                 return json.load(f)
         return None
 
+    def explain_prediction(self, scores_dict: dict):
+        """
+        Traces the decision path for a specific input and returns an interpretable flow.
+        """
+        if not os.path.exists(self.model_path):
+            return None
+            
+        model = joblib.load(self.model_path)
+        features = joblib.load(self.features_path)
+        
+        # Prepare input
+        X = np.array([[scores_dict.get(f, 0) for f in features]])
+        
+        # Get decision path
+        node_indicator = model.decision_path(X)
+        leaf_id = model.apply(X)[0]
+        
+        tree = model.tree_
+        feature_names = features
+        
+        path = []
+        node_indices = node_indicator.indices[node_indicator.indptr[0]:node_indicator.indptr[1]]
+        
+        for node_id in node_indices:
+            if leaf_id == node_id:
+                path.append({
+                    "node_id": int(node_id),
+                    "type": "leaf",
+                    "prediction": str(model.classes_[np.argmax(tree.value[node_id])]),
+                    "probability": float(np.max(tree.value[node_id]) / np.sum(tree.value[node_id]))
+                })
+            else:
+                feature = feature_names[tree.feature[node_id]]
+                threshold = float(tree.threshold[node_id])
+                value = float(X[0, tree.feature[node_id]])
+                
+                path.append({
+                    "node_id": int(node_id),
+                    "type": "decision",
+                    "feature": feature,
+                    "threshold": round(threshold, 2),
+                    "value": value,
+                    "condition": f"{feature} {'<=' if value <= threshold else '>'} {round(threshold, 2)}"
+                })
+        
+        return path
+
 ml_service = MLService()
