@@ -1,3 +1,4 @@
+from fastapi import APIRouter
 from app.api.v1 import auth, test, ml, admin
 
 api_router = APIRouter()
