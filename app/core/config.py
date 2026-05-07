@@ -33,6 +33,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "https://apitesis.fanecorp.com",
         "http://apitesis.fanecorp.com",
+        "https://v0-web-app-for-career-choice-qx74xejax.vercel.app",
+        "https://orientatufuturo.vercel.app",
     ]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
