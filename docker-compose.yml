@@ -24,6 +24,10 @@ services:
       - "8098:8000"
     depends_on:
       - db
+    volumes:
+      - .:/app
+      - ./app/ml/assets:/app/app/ml/assets
+      - ./app/ml/datasets:/app/app/ml/datasets
 
 volumes:
   postgres_data:
