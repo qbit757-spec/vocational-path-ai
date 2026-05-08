@@ -15,6 +15,7 @@ class VocationalTestSubmission(BaseModel):
 class VocationalTestResultResponse(BaseModel):
     id: int
     scores: Dict[str, int]
+    riasec_percentages: Dict[str, int] = {}
     recommendation: str
     details: Optional[str]
     created_at: datetime

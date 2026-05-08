@@ -38,6 +38,24 @@ CAREER_INFO = {
     }
 }
 
+def format_student_result(r):
+    riasec = {"R": 0, "I": 0, "A": 0, "S": 0, "E": 0, "C": 0}
+    if r.scores and isinstance(r.scores, dict):
+        for k, v in r.scores.items():
+            if k and k[0] in riasec and k[1:].isdigit():
+                try: riasec[k[0]] += int(v)
+                except: pass
+    for c in riasec: riasec[c] = int((riasec[c] / 40.0) * 100)
+    
+    return {
+        "id": r.id,
+        "scores": r.scores,
+        "riasec_percentages": riasec,
+        "recommendation": r.recommendation,
+        "details": r.details,
+        "created_at": r.created_at
+    }
+
 @router.post("/submit", response_model=VocationalTestResultResponse)
 async def submit_test(
     submission: VocationalTestSubmission,
@@ -69,7 +87,8 @@ async def submit_test(
         db.add(db_result)
         await db.commit()
         await db.refresh(db_result)
-        return db_result
+        return format_student_result(db_result)
+
     except Exception as e:
         print(f"Error en submit: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -77,4 +96,5 @@ async def submit_test(
 @router.get("/history", response_model=List[VocationalTestResultResponse])
 async def get_history(current_user: User = Depends(deps.get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(VocationalTestResult).where(VocationalTestResult.user_id == current_user.id).order_by(VocationalTestResult.created_at.desc()))
-    return result.scalars().all()
+    return [format_student_result(r) for r in result.scalars().all()]
+
