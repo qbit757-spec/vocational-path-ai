@@ -143,18 +143,19 @@ class MLService:
         path = []
         node_indices = node_indicator.indices[node_indicator.indptr[0]:node_indicator.indptr[1]]
         
+        main_conf = float(probs[idx[0]])
+        main_pred = str(classes[idx[0]])
+        
         for node_id in node_indices:
             if leaf_id == node_id:
-                val_array = tree_model.tree_.value[node_id][0]
-                leaf_prob = float(val_array[np.argmax(val_array)] / np.sum(val_array))
                 path.append({
                     "node_id": int(node_id), 
                     "type": "leaf", 
-                    "prediction": str(tree_model.classes_[np.argmax(val_array)]),
-                    "confidence": float(round(leaf_prob, 4)),
-                    "percentage": float(round(leaf_prob, 4)),
-                    "probability": float(round(leaf_prob, 4)),
-                    "value": float(round(leaf_prob, 4))
+                    "prediction": main_pred,
+                    "confidence": float(round(main_conf, 4)),
+                    "percentage": float(round(main_conf, 4)),
+                    "probability": float(round(main_conf, 4)),
+                    "value": float(round(main_conf, 4))
                 })
             else:
                 f_idx = tree_model.tree_.feature[node_id]
@@ -166,7 +167,6 @@ class MLService:
                     "condition": f"{ria_feats[f_idx]} {'>' if val > threshold else '<='} {round(threshold, 2)}"
                 })
         
-        main_conf = float(probs[idx[0]])
         return {
             "insights": {
                 "confidence": main_conf,
