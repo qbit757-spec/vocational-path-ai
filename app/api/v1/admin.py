@@ -129,6 +129,9 @@ async def explain_result(
     # Trace the path using the model
     explanation = ml_service.explain_prediction(db_result.scores)
     
+    if not explanation:
+        raise HTTPException(status_code=400, detail="El modelo no ha sido entrenado aún. Por favor, entrena el modelo primero.")
+    
     return {
         "result_id": result_id,
         "student_email": db_result.user.email if db_result.user else "N/A",
