@@ -3,7 +3,7 @@ import numpy as np
 from xgboost import XGBClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
 import joblib
 import os
 import json
@@ -42,38 +42,30 @@ class MLService:
         
         df.columns = [str(c).strip() for c in df.columns]
         
-        # RIASEC (48)
-        riasec_cols = []
-        for cat in ['R', 'I', 'A', 'S', 'E', 'C']:
-            cols = [c for c in df.columns if c.startswith(cat) and c[1:].isdigit()]
-            for c in cols:
-                df[c] = pd.to_numeric(df[c], errors='coerce').fillna(3)
-                riasec_cols.append(c)
+        # Features Extraction
+        riasec_cols = [c for c in df.columns if (c.startswith(('R','I','A','S','E','C')) and c[1:].isdigit() and int(c[1:]) <= 8)]
+        for c in riasec_cols: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(3)
         
-        # TIPI + VCL
         extra_cols = [f'TIPI{i}' for i in range(1, 11)] + [f'VCL{i}' for i in range(1, 17)]
         for c in extra_cols:
             if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
-        
-        # Demographics
+            
         demo_cols = ['age', 'gender', 'education']
         for c in demo_cols:
             if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
         
-        # --- FILTRO 75% (ELIMINAR INDECISOS) ---
+        # Filtro de Calidad (Equilibrado para Generalización)
         for cat in ['R', 'I', 'A', 'S', 'E', 'C']:
             cols = [c for c in riasec_cols if c.startswith(cat)]
             df[f"score_{cat}"] = df[cols].mean(axis=1)
         
         df['score_std'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].std(axis=1)
-        # Filtro estricto para perfiles puros
-        df = df[df['score_std'] > 1.15]
+        df = df[df['score_std'] > 1.05] # Punto de equilibrio
         
         if 'major' in df.columns:
             df['Career_Category'] = df['major'].apply(self._map_major_to_category)
             df = df.dropna(subset=['Career_Category'])
-            # Balanceo agresivo
-            df = df.groupby('Career_Category').apply(lambda x: x.sample(n=min(len(x), 7000), random_state=42)).reset_index(drop=True)
+            df = df.groupby('Career_Category').apply(lambda x: x.sample(n=min(len(x), 8000), random_state=42)).reset_index(drop=True)
         
         features = riasec_cols + [c for c in extra_cols if c in df.columns] + [c for c in demo_cols if c in df.columns]
         return df, features
@@ -81,7 +73,6 @@ class MLService:
     def _map_major_to_category(self, major: Any) -> Optional[str]:
         if not isinstance(major, str): return None
         m = str(major).lower().strip()
-        # 4 CATEGORIAS MEGA-SOLIDAS PARA EL 75%
         mapping = {
             'Ingeniería y Tecnología': ['eng', 'comp', 'tech', 'soft', 'civil', 'mech', 'it', 'math', 'phys', 'syst', 'scie', 'data', 'web', 'electr', 'robot', 'mining', 'telecom', 'indust'],
             'Ciencias de la Salud': ['med', 'nurs', 'dent', 'bio', 'phar', 'psyc', 'heal', 'vet', 'thera', 'medic', 'nurse', 'doct', 'physio', 'biol', 'nutri', 'kine', 'obs'],
@@ -103,19 +94,27 @@ class MLService:
             y_codes = pd.Categorical(y)
             y_mapped = y_codes.codes
             
-            X_train, X_test, y_train, y_test = train_test_split(X, y_mapped, test_size=0.15, random_state=42)
+            X_train, X_test, y_train, y_test = train_test_split(X, y_mapped, test_size=0.2, random_state=42)
             
-            # XGBOOST ULTRA-PROFUNDO
-            model = XGBClassifier(n_estimators=1200, max_depth=15, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
+            # XGBOOST OPTIMIZADO
+            model = XGBClassifier(n_estimators=1000, max_depth=12, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
             model.fit(X_train, y_train)
             
-            accuracy = accuracy_score(y_test, model.predict(X_test))
+            y_pred = model.predict(X_test)
+            report = classification_report(y_test, y_pred, output_dict=True)
             
             joblib.dump(model, self.model_path)
             joblib.dump(features, self.features_path)
             joblib.dump(list(y_codes.categories), self.classes_path)
             
-            stats = {"accuracy": float(accuracy), "n_samples": len(full_df), "engine": "XGBoost-Ultra", "trained_at": datetime.now().isoformat()}
+            stats = {
+                "accuracy": float(report['accuracy']),
+                "f1_score": float(report['weighted avg']['f1-score']),
+                "precision_avg": float(report['weighted avg']['precision']),
+                "recall_avg": float(report['weighted avg']['recall']),
+                "n_samples": len(full_df),
+                "trained_at": datetime.now().isoformat()
+            }
             with open(self.stats_path, 'w') as f: json.dump(stats, f)
             return stats
         except Exception as e:
@@ -132,14 +131,18 @@ class MLService:
         probs = model.predict_proba(np.array([X_vec]))[0]
         idx = np.argsort(probs)[::-1]
         
+        main_conf = float(probs[idx[0]])
+        is_clear = main_conf > 0.65
+        
         return {
             "insights": {
-                "confidence": float(probs[idx[0]]),
-                "is_multipotential": (probs[idx[0]] - probs[idx[1]]) < 0.10,
-                "second_option": {"career": str(classes[idx[1]]), "confidence": round(probs[idx[1]] * 100, 2)},
-                "prediction": str(classes[idx[0]])
+                "confidence": main_conf,
+                "is_multipotential": bool((probs[idx[0]] - probs[idx[1]]) < 0.12),
+                "second_option": {"career": str(classes[idx[1]]), "confidence": float(round(probs[idx[1]] * 100, 2))},
+                "prediction": str(classes[idx[0]]),
+                "diagnosis_type": "Alta Certeza" if is_clear else "Exploratorio"
             },
-            "decision_path": [{"prediction": str(classes[idx[0]])}]
+            "decision_path": [{"prediction": str(classes[idx[0]]), "condition": "Resultado de alta confianza" if is_clear else "Resultado sugerido"}]
         }
 
     def get_model_stats(self):
