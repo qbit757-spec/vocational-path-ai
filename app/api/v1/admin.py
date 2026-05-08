@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import List
@@ -51,6 +51,35 @@ async def delete_question(
     await db.execute(delete(Question).where(Question.id == question_id))
     await db.commit()
     return {"message": "Question deleted"}
+
+@router.post("/datasets/upload")
+async def upload_dataset(
+    file: UploadFile = File(...),
+    admin: dict = Depends(deps.get_current_admin_user)
+):
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only CSV files allowed")
+    
+    content = await file.read()
+    path = ml_service.save_dataset(file.filename, content)
+    return {"filename": file.filename, "path": path}
+
+@router.get("/datasets")
+async def list_datasets(
+    admin: dict = Depends(deps.get_current_admin_user)
+):
+    return ml_service.list_datasets()
+
+@router.post("/train")
+async def train_model_endpoint(
+    filenames: List[str] = None,
+    admin: dict = Depends(deps.get_current_admin_user)
+):
+    try:
+        stats = await ml_service.train_from_files(filenames)
+        return {"message": "Model trained successfully", "stats": stats}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/results", response_model=List[dict])
 async def view_all_results(
