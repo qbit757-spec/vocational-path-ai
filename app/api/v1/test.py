@@ -18,27 +18,23 @@ async def get_test_questions(db: AsyncSession = Depends(get_db)):
     questions = result.scalars().all()
     return [{"id": q.id, "text": q.text, "category": q.category} for q in questions]
 
-# CATEGORIAS ACTUALIZADAS (5 CATEGORIAS SOLIDAS)
+# CATEGORIAS ULTRA-SOLIDAS (4 BLOQUES PARA EL 75%)
 CAREER_INFO = {
-    'Ingeniería / Tecnología': {
-        'description': 'Muestras un fuerte interés por el funcionamiento de las cosas y la resolución de problemas técnicos.',
-        'careers': ['Ingeniería Civil', 'Ingeniería de Sistemas', 'Ingeniería Mecánica', 'Arquitectura']
+    'Ingeniería y Tecnología': {
+        'description': 'Muestras un perfil analítico excepcional con gran capacidad para la resolución de problemas técnicos y tecnológicos.',
+        'careers': ['Ingeniería Civil', 'Ingeniería de Sistemas', 'Ingeniería Mecánica', 'Arquitectura', 'Ciencia de Datos']
     },
     'Ciencias de la Salud': {
-        'description': 'Tienes una inclinación natural hacia el cuidado de los demás y la investigación biológica.',
-        'careers': ['Medicina', 'Enfermería', 'Psicología', 'Nutrición']
+        'description': 'Tu perfil indica una fuerte vocación hacia el bienestar humano, la investigación biológica y el cuidado médico.',
+        'careers': ['Medicina', 'Enfermería', 'Psicología', 'Nutrición', 'Odontología']
     },
-    'Artes y Diseño': {
-        'description': 'Tu perfil es altamente creativo y valoras la expresión estética.',
-        'careers': ['Diseño Gráfico', 'Artes Escénicas', 'Diseño de Modas', 'Comunicación Audiovisual']
-    },
-    'Ciencias Sociales / Educación': {
-        'description': 'Te interesa el bienestar social, la enseñanza y el entendimiento del comportamiento humano.',
-        'careers': ['Educación', 'Sociología', 'Derecho', 'Trabajo Social']
+    'Artes, Humanidades y Educación': {
+        'description': 'Posees una gran sensibilidad artística, habilidades sociales y una fuerte inclinación hacia la expresión creativa y la enseñanza.',
+        'careers': ['Diseño Gráfico', 'Artes Escénicas', 'Educación', 'Sociología', 'Comunicación Audiovisual', 'Literatura']
     },
     'Negocios, Gestión y Derecho': {
-        'description': 'Posees habilidades persuasivas, te interesa la gestión estratégica y el marco legal.',
-        'careers': ['Administración', 'Derecho', 'Contabilidad', 'Marketing', 'Economía']
+        'description': 'Tu perfil es estratégico, con grandes habilidades persuasivas y una fuerte capacidad para la gestión organizacional y el marco legal.',
+        'careers': ['Administración', 'Derecho', 'Contabilidad', 'Marketing', 'Economía', 'Negocios Internacionales']
     }
 }
 
@@ -49,50 +45,30 @@ async def submit_test(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        # 1. Mapear respuestas a formato 48-item (R1, R2... C8)
-        # Obtenemos las categorias de las preguntas para saber cual es cual
         q_result = await db.execute(select(Question))
         q_map = {q.id: q.category for q in q_result.scalars().all()}
-        
-        # Diccionario para contar cuantas preguntas de cada tipo llevamos
         cat_counts = {"Realista": 0, "Investigativo": 0, "Artístico": 0, "Social": 0, "Emprendedor": 0, "Convencional": 0}
         cat_to_letter = {"Realista": "R", "Investigativo": "I", "Artístico": "A", "Social": "S", "Emprendedor": "E", "Convencional": "C"}
         
-        raw_scores = {
-            "age": submission.age,
-            "gender": submission.gender,
-            "education": submission.education
-        }
+        raw_scores = {"age": submission.age, "gender": submission.gender, "education": submission.education}
         for ans in submission.answers:
             cat_name = q_map.get(ans.question_id)
             if cat_name in cat_counts:
                 cat_counts[cat_name] += 1
                 letter = cat_to_letter[cat_name]
-                # Guardamos como R1, R2... etc para que la IA lo entienda
                 raw_scores[f"{letter}{cat_counts[cat_name]}"] = ans.value
         
-        # 2. Usar ML Service para predecir (XGBoost)
         explanation = ml_service.explain_prediction(raw_scores)
-        if not explanation:
-            raise HTTPException(status_code=500, detail="Modelo no entrenado")
-            
-        recommendation = str(explanation["decision_path"][-1]["prediction"])
+        if not explanation: raise HTTPException(status_code=500, detail="Modelo no entrenado")
+        recommendation = str(explanation["insights"]["prediction"])
         
-        # 3. Obtener info de carrera
-        info = CAREER_INFO.get(recommendation, {'description': '', 'careers': []})
+        info = CAREER_INFO.get(recommendation, {'description': 'Perfil vocacional identificado.', 'careers': []})
         details = f"{info['description']} Carreras sugeridas: {', '.join(info['careers'])}"
         
-        # 4. Guardar resultado
-        db_result = VocationalTestResult(
-            user_id=current_user.id,
-            scores=raw_scores,
-            recommendation=recommendation,
-            details=details
-        )
+        db_result = VocationalTestResult(user_id=current_user.id, scores=raw_scores, recommendation=recommendation, details=details)
         db.add(db_result)
         await db.commit()
         await db.refresh(db_result)
-        
         return db_result
     except Exception as e:
         print(f"Error en submit: {str(e)}")
