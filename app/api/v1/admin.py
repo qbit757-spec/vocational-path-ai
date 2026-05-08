@@ -1,14 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from typing import List
+from typing import List, Optional
+from pydantic import BaseModel
 from app.db.session import get_db
 from app.api import deps
 from app.db.models.question_model import Question
 from app.db.models.test_model import VocationalTestResult
-from pydantic import BaseModel
+from app.services.ml_service import ml_service
 
 router = APIRouter()
+
+class TrainRequest(BaseModel):
+    filenames: Optional[List[str]] = None
 
 class QuestionCreate(BaseModel):
     text: str
@@ -72,10 +76,11 @@ async def list_datasets(
 
 @router.post("/train")
 async def train_model_endpoint(
-    filenames: List[str] = None,
+    request: TrainRequest = Body(None),
     admin: dict = Depends(deps.get_current_admin_user)
 ):
     try:
+        filenames = request.filenames if request else None
         stats = await ml_service.train_from_files(filenames)
         return {"message": "Model trained successfully", "stats": stats}
     except Exception as e:

@@ -32,10 +32,14 @@ class MLService:
         return path
 
     def list_datasets(self):
+        print(f"DEBUG: Checking datasets in {self.datasets_dir}")
         if not os.path.exists(self.datasets_dir):
+            print(f"DEBUG: Directory {self.datasets_dir} does not exist")
             return []
         files = os.listdir(self.datasets_dir)
-        return [{"filename": f, "size": os.path.getsize(os.path.join(self.datasets_dir, f))} for f in files if f.endswith('.csv')]
+        csv_files = [f for f in files if f.endswith('.csv')]
+        print(f"DEBUG: Found CSV files: {csv_files}")
+        return [{"filename": f, "size": os.path.getsize(os.path.join(self.datasets_dir, f))} for f in csv_files]
 
     def clean_data(self, df: pd.DataFrame):
         """
