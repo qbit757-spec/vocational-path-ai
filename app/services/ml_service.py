@@ -33,7 +33,6 @@ class MLService:
         return path
 
     def list_datasets(self):
-        print(f"DEBUG: Checking datasets in {self.datasets_dir}")
         if not os.path.exists(self.datasets_dir):
             return []
         files = os.listdir(self.datasets_dir)
@@ -42,31 +41,49 @@ class MLService:
 
     def clean_data(self, df: pd.DataFrame):
         logs = []
+        # Clean column names (strip whitespace/quotes)
+        df.columns = [str(c).strip().replace('"', '') for c in df.columns]
         logs.append(f"Initial shape: {df.shape}")
         
-        # Check if it's the 48-item RIASEC format
-        is_real_riasec = all(f"{cat}{i}" in df.columns for cat in 'RISEC' for i in range(1, 9)) and 'A1' in df.columns
+        # Identify RIASEC columns dynamically
+        # Some datasets use F instead of E for some items, we'll be flexible
+        ria_map = {
+            'R': [c for c in df.columns if c.startswith('R') and c[1:].isdigit()],
+            'I': [c for c in df.columns if c.startswith('I') and c[1:].isdigit()],
+            'A': [c for c in df.columns if c.startswith('A') and c[1:].isdigit()],
+            'S': [c for c in df.columns if c.startswith('S') and c[1:].isdigit()],
+            'E': [c for c in df.columns if (c.startswith('E') or c.startswith('F')) and c[1:].isdigit()],
+            'C': [c for c in df.columns if c.startswith('C') and c[1:].isdigit()]
+        }
+        
+        is_real_riasec = all(len(cols) >= 5 for cols in ria_map.values())
         
         if is_real_riasec:
-            logs.append("Detected real-world 48-item RIASEC format. Starting specialized cleaning...")
+            logs.append("Detected real-world RIASEC format with dynamic column matching...")
             
             # 1. VCL Validity Check
-            if all(c in df.columns for c in ['VCL6', 'VCL9', 'VCL12']):
+            vcl_cols = [c for c in df.columns if c.startswith('VCL')]
+            if vcl_cols:
                 before_vcl = len(df)
-                df = df[(df['VCL6'] == 0) & (df['VCL9'] == 0) & (df['VCL12'] == 0)]
-                logs.append(f"Dropped {before_vcl - len(df)} invalid records (VCL check)")
+                # Filter by honesty (VCL6, 9, 12 should be 0 if they exist)
+                for vc in ['VCL6', 'VCL9', 'VCL12']:
+                    if vc in df.columns:
+                        df[vc] = pd.to_numeric(df[vc], errors='coerce').fillna(0)
+                        df = df[df[vc] == 0]
+                logs.append(f"Dropped {before_vcl - len(df)} records (VCL check)")
             
             # 2. Age Filter
             if 'age' in df.columns:
-                before_age = len(df)
+                df['age'] = pd.to_numeric(df['age'], errors='coerce')
                 df = df[(df['age'] >= 13) & (df['age'] <= 80)]
-                logs.append(f"Dropped {before_age - len(df)} records with invalid age")
-
+            
             # 3. Aggregate RIASEC items
-            for cat in 'RIASEC':
-                cols = [f"{cat}{i}" for i in range(1, 9)]
-                df[cat] = df[cols].sum(axis=1)
-                df[cat] = ((df[cat] - 8) / (40 - 8)) * 10
+            for cat, cols in ria_map.items():
+                for c in cols:
+                    df[c] = pd.to_numeric(df[c], errors='coerce').fillna(3)
+                df[cat] = df[cols].mean(axis=1) * 2 # Scale to 0-10 (assuming 1-5 scale)
+                # Adjustment: (Mean - 1) / (5 - 1) * 10
+                df[cat] = ((df[cat]/2 - 1) / 4) * 10
             
             # 4. Map 'major' to 'Career_Category'
             if 'major' in df.columns:
@@ -74,27 +91,28 @@ class MLService:
                 df = df.dropna(subset=['Career_Category'])
                 logs.append(f"Mapped majors to categories. Final rows: {len(df)}")
             else:
-                logs.append("WARNING: 'major' column not found, using synthetic labels for mapping.")
+                logs.append("WARNING: 'major' column not found, generating labels...")
                 df['Career_Category'] = df.apply(self._synthetic_label, axis=1)
         else:
+            logs.append("Format not recognized as 48-item. Looking for direct R,I,A,S,E,C columns.")
             required_cols = ['R', 'I', 'A', 'S', 'E', 'C', 'Career_Category']
             existing_cols = [c for c in required_cols if c in df.columns]
-            df = df[existing_cols]
-            ria_cols = ['R', 'I', 'A', 'S', 'E', 'C']
-            df = df.dropna(subset=[c for c in ria_cols if c in df.columns])
+            df = df[existing_cols].dropna()
         
         return df, logs
 
     def _map_major_to_category(self, major: Any) -> Optional[str]:
         if not isinstance(major, str): return None
-        major = major.lower()
+        major = str(major).lower().strip()
+        if not major or major == 'nan': return None
+        
         mapping = {
-            'Ingeniería / Tecnología': ['eng', 'comp', 'tech', 'softw', 'civil', 'mech', 'it', 'math', 'physic', 'syst'],
-            'Ciencias de la Salud': ['med', 'nurs', 'dent', 'bio', 'pharm', 'psych', 'health', 'vet', 'therap'],
-            'Artes y Diseño': ['art', 'design', 'music', 'dance', 'fashion', 'film', 'photo', 'paint', 'archit'],
-            'Ciencias Sociales / Educación': ['edu', 'teach', 'soc', 'hist', 'law', 'polit', 'anthro', 'ling', 'phil'],
-            'Negocios / Derecho': ['bus', 'market', 'econ', 'law', 'finan', 'entre', 'trade', 'comm'],
-            'Administración / Contabilidad': ['admin', 'acc', 'audit', 'manage', 'office', 'hr', 'logist']
+            'Ingeniería / Tecnología': ['eng', 'comp', 'tech', 'softw', 'civil', 'mech', 'it', 'math', 'physic', 'syst', 'science', 'data', 'web'],
+            'Ciencias de la Salud': ['med', 'nurs', 'dent', 'bio', 'pharm', 'psych', 'health', 'vet', 'therap', 'medic', 'nurse'],
+            'Artes y Diseño': ['art', 'design', 'music', 'dance', 'fashion', 'film', 'photo', 'paint', 'archit', 'literat', 'creat', 'write'],
+            'Ciencias Sociales / Educación': ['edu', 'teach', 'soc', 'hist', 'law', 'polit', 'anthro', 'ling', 'phil', 'counsel', 'commun', 'social'],
+            'Negocios / Derecho': ['bus', 'market', 'econ', 'law', 'finan', 'entre', 'trade', 'comm', 'business', 'legal', 'sales'],
+            'Administración / Contabilidad': ['admin', 'acc', 'audit', 'manage', 'office', 'hr', 'logist', 'resource']
         }
         for category, keywords in mapping.items():
             if any(k in major for k in keywords):
@@ -106,48 +124,36 @@ class MLService:
         all_dfs = []
         try:
             if not filenames:
-                all_logs.append("No files provided. Generating synthetic dataset...")
+                all_logs.append("No files provided. Using synthetic generator.")
                 df = self.generate_synthetic_df(2000)
                 all_dfs.append(df)
             else:
                 for fname in filenames:
                     path = os.path.join(self.datasets_dir, fname)
                     if os.path.exists(path):
-                        all_logs.append(f"Reading {fname}...")
-                        # Handle multiple delimiters (commas or tabs)
+                        all_logs.append(f"Processing {fname}...")
                         try:
-                            df = pd.read_csv(path, sep=None, engine='python')
+                            # sep=None with python engine handles tabs/commas/any delimiter automatically
+                            df = pd.read_csv(path, sep=None, engine='python', on_bad_lines='skip')
+                            df_cleaned, logs = self.clean_data(df)
+                            all_logs.extend(logs)
+                            if not df_cleaned.empty:
+                                all_dfs.append(df_cleaned)
                         except Exception as e:
-                            all_logs.append(f"Error reading {fname}: {str(e)}")
-                            continue
-                            
-                        df_cleaned, logs = self.clean_data(df)
-                        all_logs.extend(logs)
-                        if len(df_cleaned) > 0:
-                            all_dfs.append(df_cleaned)
-                        else:
-                            all_logs.append(f"WARNING: {fname} resulted in empty dataset after cleaning.")
+                            all_logs.append(f"Error in {fname}: {str(e)}")
 
             if not all_dfs:
-                raise Exception("No valid data found in any of the provided files after cleaning.")
+                raise Exception("No valid data to train with.")
 
             full_df = pd.concat(all_dfs, ignore_index=True)
-            all_logs.append(f"Total training samples: {len(full_df)}")
-
-            if 'Career_Category' not in full_df.columns:
-                full_df['Career_Category'] = full_df.apply(self._synthetic_label, axis=1)
-
             X = full_df[['R', 'I', 'A', 'S', 'E', 'C']]
             y = full_df['Career_Category']
             
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-            
-            model = DecisionTreeClassifier(max_depth=10, random_state=42)
+            model = DecisionTreeClassifier(max_depth=12, random_state=42)
             model.fit(X_train, y_train)
             
-            y_pred = model.predict(X_test)
-            accuracy = accuracy_score(y_test, y_pred)
-            
+            accuracy = accuracy_score(y_test, model.predict(X_test))
             joblib.dump(model, self.model_path)
             joblib.dump(['R', 'I', 'A', 'S', 'E', 'C'], self.features_path)
             
@@ -162,9 +168,8 @@ class MLService:
                 json.dump(stats, f)
             return stats
         except Exception as e:
-            error_trace = traceback.format_exc()
-            print(f"ERROR DURING TRAINING:\n{error_trace}")
-            raise Exception(f"Training Error: {str(e)}")
+            print(traceback.format_exc())
+            raise Exception(f"Training failed: {str(e)}")
 
     def generate_synthetic_df(self, n_samples=2000):
         np.random.seed(42)
@@ -199,7 +204,6 @@ class MLService:
         node_indicator = model.decision_path(X)
         leaf_id = model.apply(X)[0]
         tree = model.tree_
-        feature_names = features
         path = []
         node_indices = node_indicator.indices[node_indicator.indptr[0]:node_indicator.indptr[1]]
         for node_id in node_indices:
@@ -211,7 +215,7 @@ class MLService:
                     "probability": float(np.max(tree.value[node_id]) / np.sum(tree.value[node_id]))
                 })
             else:
-                feature = feature_names[tree.feature[node_id]]
+                feature = features[tree.feature[node_id]]
                 threshold = float(tree.threshold[node_id])
                 value = float(X[0, tree.feature[node_id]])
                 path.append({
