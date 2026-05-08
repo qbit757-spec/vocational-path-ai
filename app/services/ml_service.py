@@ -145,7 +145,14 @@ class MLService:
         
         for node_id in node_indices:
             if leaf_id == node_id:
-                path.append({"node_id": int(node_id), "type": "leaf", "prediction": str(tree_model.classes_[np.argmax(tree_model.tree_.value[node_id])])})
+                val_array = tree_model.tree_.value[node_id][0]
+                leaf_prob = float(val_array[np.argmax(val_array)] / np.sum(val_array))
+                path.append({
+                    "node_id": int(node_id), 
+                    "type": "leaf", 
+                    "prediction": str(tree_model.classes_[np.argmax(val_array)]),
+                    "confidence": round(leaf_prob * 100, 2)
+                })
             else:
                 f_idx = tree_model.tree_.feature[node_id]
                 threshold = float(tree_model.tree_.threshold[node_id])
