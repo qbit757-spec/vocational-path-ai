@@ -2,10 +2,12 @@ from pydantic import BaseModel
 from typing import Dict, List, Optional
 from datetime import datetime
 
+class Answer(BaseModel):
+    question_id: int
+    value: int
+
 class VocationalTestSubmission(BaseModel):
-    # Dictionary of RIASEC scores or raw answers that map to RIASEC
-    # For simplicity, we'll assume the frontend sends the calculated RIASEC scores (0-10)
-    scores: Dict[str, int]
+    answers: List[Answer]
 
 class VocationalTestResultResponse(BaseModel):
     id: int
