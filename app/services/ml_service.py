@@ -68,7 +68,8 @@ class MLService:
             df[f"score_{cat}"] = df[cols].mean(axis=1)
         
         df['score_std'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].std(axis=1)
-        df = df[df['score_std'] > 1.05]
+        # Filtro de Claridad: A mayor número, menos muestras, pero mayor precisión.
+        df = df[df['score_std'] > 1.20]
         
         if 'major' in df.columns:
             df['Career_Category'] = df['major'].apply(self._map_major_to_category)
