@@ -151,7 +151,10 @@ class MLService:
                     "node_id": int(node_id), 
                     "type": "leaf", 
                     "prediction": str(tree_model.classes_[np.argmax(val_array)]),
-                    "confidence": round(leaf_prob * 100, 2)
+                    "confidence": round(leaf_prob * 100, 2),
+                    "percentage": round(leaf_prob * 100, 2),
+                    "probability": round(leaf_prob * 100, 2),
+                    "value": round(leaf_prob * 100, 2)
                 })
             else:
                 f_idx = tree_model.tree_.feature[node_id]
@@ -187,7 +190,10 @@ class MLService:
                     "node_id": int(node), 
                     "type": "leaf", 
                     "prediction": str(model.classes_[np.argmax(val_array)]),
-                    "confidence": round(prob * 100, 2)
+                    "confidence": round(prob * 100, 2),
+                    "percentage": round(prob * 100, 2),
+                    "probability": round(prob * 100, 2),
+                    "value": round(prob * 100, 2)
                 }
             return {"node_id": int(node), "type": "decision", "feature": ria_feats[tree.feature[node]], "threshold": round(float(tree.threshold[node]), 2), "left": recurse(tree.children_left[node]), "right": recurse(tree.children_right[node])}
         return recurse(0)
