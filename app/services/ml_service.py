@@ -134,9 +134,34 @@ class MLService:
             joblib.dump(model, self.model_path)
             joblib.dump(tree_model, self.tree_path)
             joblib.dump(features, self.features_path)
-            joblib.dump(list(y_codes.categories), self.classes_path)
+            from sklearn.metrics import roc_auc_score
+            y_pred_proba = model.predict_proba(X_test)
+            try:
+                auc_roc = float(roc_auc_score(y_test, y_pred_proba, multi_class="ovr", average="weighted"))
+            except:
+                auc_roc = 0.0
             
-            stats = {"accuracy": float(report['accuracy']), "f1_score": float(report['weighted avg']['f1-score']), "n_samples": len(full_df), "trained_at": datetime.now().isoformat()}
+            classes_metrics = {}
+            for i, cat_name in enumerate(y_codes.categories):
+                if str(i) in report:
+                    classes_metrics[str(cat_name)] = {
+                        "precision": float(report[str(i)]['precision']),
+                        "recall": float(report[str(i)]['recall']),
+                        "f1_score": float(report[str(i)]['f1-score']),
+                        "support": int(report[str(i)]['support'])
+                    }
+
+            stats = {
+                "accuracy": float(report['accuracy']), 
+                "f1_score": float(report['weighted avg']['f1-score']), 
+                "precision": float(report['weighted avg']['precision']),
+                "recall": float(report['weighted avg']['recall']),
+                "auc_roc": auc_roc,
+                "support": int(report['macro avg']['support']),
+                "n_samples": len(full_df), 
+                "trained_at": datetime.now().isoformat(),
+                "classes_metrics": classes_metrics
+            }
             with open(self.stats_path, 'w') as f: json.dump(stats, f)
             
             self._log_training(f"PROCESO COMPLETADO CON ÉXITO. Precisión: {stats['accuracy']:.2f} | F1-Score: {stats['f1_score']:.2f}")
