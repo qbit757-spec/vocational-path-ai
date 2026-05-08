@@ -58,7 +58,11 @@ async def submit_test(
         cat_counts = {"Realista": 0, "Investigativo": 0, "Artístico": 0, "Social": 0, "Emprendedor": 0, "Convencional": 0}
         cat_to_letter = {"Realista": "R", "Investigativo": "I", "Artístico": "A", "Social": "S", "Emprendedor": "E", "Convencional": "C"}
         
-        raw_scores = {}
+        raw_scores = {
+            "age": submission.age,
+            "gender": submission.gender,
+            "education": submission.education
+        }
         for ans in submission.answers:
             cat_name = q_map.get(ans.question_id)
             if cat_name in cat_counts:

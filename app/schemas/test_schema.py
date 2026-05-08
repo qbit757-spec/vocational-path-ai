@@ -8,6 +8,9 @@ class Answer(BaseModel):
 
 class VocationalTestSubmission(BaseModel):
     answers: List[Answer]
+    age: Optional[int] = 18
+    gender: Optional[int] = 1 # 1=Male, 2=Female, 3=Other
+    education: Optional[int] = 2 # 1=Less than high school, 2=High school, 3=University...
 
 class VocationalTestResultResponse(BaseModel):
     id: int
