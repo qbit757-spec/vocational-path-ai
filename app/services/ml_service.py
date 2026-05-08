@@ -26,6 +26,17 @@ class MLService:
         self.features_path = os.path.join(self.model_dir, 'features.joblib')
         self.stats_path = os.path.join(self.model_dir, 'model_stats.json')
         self.classes_path = os.path.join(self.model_dir, 'classes.joblib')
+        self.log_path = os.path.join(self.model_dir, 'training.log')
+
+    def _log_training(self, msg: str):
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(self.log_path, 'a') as f:
+            f.write(f"[{timestamp}] {msg}\n")
+            
+    def get_training_logs(self) -> str:
+        if os.path.exists(self.log_path):
+            with open(self.log_path, 'r') as f: return f.read()
+        return "No hay logs de entrenamiento disponibles."
 
     def save_dataset(self, filename: str, content: bytes):
         path = os.path.join(self.datasets_dir, filename)
@@ -82,29 +93,43 @@ class MLService:
 
     async def train_from_files(self, filenames: list[str] = None):
         try:
+            with open(self.log_path, 'w') as f: f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando proceso de entrenamiento del Modelo Híbrido...\n")
+            
+            self._log_training(f"Cargando dataset: {filenames[0] if filenames else 'default'}")
             path = os.path.join(self.datasets_dir, filenames[0])
             full_df = pd.read_csv(path, sep='\t' if '\t' in open(path).readline() else ',', on_bad_lines='skip')
+            
+            self._log_training(f"Dataset cargado. Filas totales iniciales: {len(full_df)}")
+            self._log_training("Aplicando filtro de desviación estándar y limpieza multidimensional...")
             full_df, features = self.clean_data(full_df)
 
+            self._log_training(f"Limpieza completada. Muestras puras retenidas: {len(full_df)}")
+            self._log_training(f"Extrayendo {len(features)} variables de características (Features)...")
+            
             X = full_df[features]
             y = full_df['Career_Category']
             y_codes = pd.Categorical(y)
             y_mapped = y_codes.codes
             
+            self._log_training("Dividiendo datos en conjuntos de Entrenamiento (80%) y Prueba (20%)...")
             X_train, X_test, y_train, y_test = train_test_split(X, y_mapped, test_size=0.2, random_state=42)
             
+            self._log_training("Entrenando motor principal (XGBoost) con 1000 árboles y profundidad 12...")
             # XGBoost
             model = XGBClassifier(n_estimators=1000, max_depth=12, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
             model.fit(X_train, y_train)
             
+            self._log_training("Entrenamiento XGBoost finalizado. Evaluando métricas...")
             y_pred = model.predict(X_test)
             report = classification_report(y_test, y_pred, output_dict=True)
             
+            self._log_training("Entrenando modelo sustituto visual (Decision Tree XAI) para generación de grafos...")
             # XAI Tree
             X_xai = full_df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]]
             tree_model = DecisionTreeClassifier(max_depth=12, random_state=42)
             tree_model.fit(X_xai, y)
             
+            self._log_training("Guardando modelos (.joblib) y actualizando métricas estáticas...")
             joblib.dump(model, self.model_path)
             joblib.dump(tree_model, self.tree_path)
             joblib.dump(features, self.features_path)
@@ -112,9 +137,13 @@ class MLService:
             
             stats = {"accuracy": float(report['accuracy']), "f1_score": float(report['weighted avg']['f1-score']), "n_samples": len(full_df), "trained_at": datetime.now().isoformat()}
             with open(self.stats_path, 'w') as f: json.dump(stats, f)
+            
+            self._log_training(f"PROCESO COMPLETADO CON ÉXITO. Precisión: {stats['accuracy']:.2f} | F1-Score: {stats['f1_score']:.2f}")
             return stats
         except Exception as e:
-            print(traceback.format_exc())
+            err_msg = traceback.format_exc()
+            self._log_training(f"ERROR FATAL DURANTE EL ENTRENAMIENTO:\n{err_msg}")
+            print(err_msg)
             raise Exception(f"Training failed: {str(e)}")
 
     def explain_prediction(self, inputs: dict):

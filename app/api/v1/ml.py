@@ -19,6 +19,14 @@ async def get_stats() -> Any:
         raise HTTPException(status_code=404, detail="Model stats not found. Please train the model first.")
     return stats
 
+@router.get("/training-logs")
+async def get_training_logs() -> Any:
+    """
+    Get the raw text logs from the last training execution.
+    """
+    logs = ml_service.get_training_logs()
+    return {"logs": logs}
+
 @router.post("/upload-dataset")
 async def upload_dataset(file: UploadFile = File(...)) -> Any:
     """
