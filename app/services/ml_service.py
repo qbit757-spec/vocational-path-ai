@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 import json
 import shutil
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 class MLService:
     def __init__(self):
@@ -32,37 +32,80 @@ class MLService:
         return path
 
     def list_datasets(self):
+        if not os.path.exists(self.datasets_dir):
+            return []
         files = os.listdir(self.datasets_dir)
         return [{"filename": f, "size": os.path.getsize(os.path.join(self.datasets_dir, f))} for f in files if f.endswith('.csv')]
 
     def clean_data(self, df: pd.DataFrame):
         """
-        Example cleaning process:
-        - Handle missing values
-        - Ensure columns R, I, A, S, E, C exist and are numeric
-        - Normalize or scale if necessary
+        Processes real-world data from OpenPsychometrics or synthetic data.
         """
         logs = []
         logs.append(f"Initial shape: {df.shape}")
         
-        # Keep only necessary columns if they exist
-        required_cols = ['R', 'I', 'A', 'S', 'E', 'C', 'Career_Category']
-        existing_cols = [c for c in required_cols if c in df.columns]
-        df = df[existing_cols]
-        logs.append(f"Columns kept: {existing_cols}")
+        # Check if it's the 48-item RIASEC format
+        is_real_riasec = all(f"{cat}{i}" in df.columns for cat in 'RISEC' for i in range(1, 9)) and 'A1' in df.columns
+        
+        if is_real_riasec:
+            logs.append("Detected real-world 48-item RIASEC format. Starting specialized cleaning...")
+            
+            # 1. VCL Validity Check (Honest check)
+            # VCL6, VCL9, VCL12 are non-existent words. If checked (1), the entry is invalid.
+            if all(c in df.columns for c in ['VCL6', 'VCL9', 'VCL12']):
+                before_vcl = len(df)
+                df = df[(df['VCL6'] == 0) & (df['VCL9'] == 0) & (df['VCL12'] == 0)]
+                logs.append(f"Dropped {before_vcl - len(df)} invalid records (failed VCL honesty check)")
+            
+            # 2. Age Filter (> 13 as per dataset description)
+            if 'age' in df.columns:
+                before_age = len(df)
+                # Keep ages between 13 and 80 to avoid extreme outliers
+                df = df[(df['age'] >= 13) & (df['age'] <= 80)]
+                logs.append(f"Dropped {before_age - len(df)} records with invalid age")
 
-        # Drop rows with missing RIASEC scores
-        ria_cols = ['R', 'I', 'A', 'S', 'E', 'C']
-        before_drop = len(df)
-        df = df.dropna(subset=[c for c in ria_cols if c in df.columns])
-        logs.append(f"Dropped {before_drop - len(df)} rows with null RIASEC scores")
-
-        # Fill missing Career_Category if it's the target
-        if 'Career_Category' in df.columns:
-            df = df.dropna(subset=['Career_Category'])
-            logs.append(f"Rows after dropping null targets: {len(df)}")
+            # 3. Aggregate RIASEC items (Sum R1-R8, etc.)
+            for cat in 'RIASEC':
+                cols = [f"{cat}{i}" for i in range(1, 9)]
+                # Aggregate and normalize to 0-10 scale
+                df[cat] = df[cols].sum(axis=1)
+                # Normalizing: (Sum - min_possible) / (max_possible - min_possible) * 10
+                # Min possible sum is 8 (all 1s), Max is 40 (all 5s)
+                df[cat] = ((df[cat] - 8) / (40 - 8)) * 10
+            
+            # 4. Map 'major' to 'Career_Category'
+            if 'major' in df.columns:
+                df['Career_Category'] = df['major'].apply(self._map_major_to_category)
+                df = df.dropna(subset=['Career_Category'])
+                logs.append(f"Mapped majors to categories. Final rows: {len(df)}")
+        else:
+            # Handle synthetic or pre-processed data (columns R, I, A, S, E, C)
+            required_cols = ['R', 'I', 'A', 'S', 'E', 'C', 'Career_Category']
+            existing_cols = [c for c in required_cols if c in df.columns]
+            df = df[existing_cols]
+            
+            ria_cols = ['R', 'I', 'A', 'S', 'E', 'C']
+            df = df.dropna(subset=[c for c in ria_cols if c in df.columns])
         
         return df, logs
+
+    def _map_major_to_category(self, major: Any) -> Optional[str]:
+        if not isinstance(major, str): return None
+        major = major.lower()
+        
+        mapping = {
+            'Ingeniería / Tecnología': ['eng', 'comp', 'tech', 'software', 'civil', 'mech', 'it', 'math', 'physic'],
+            'Ciencias de la Salud': ['med', 'nurs', 'dent', 'bio', 'pharm', 'psych', 'health', 'vet'],
+            'Artes y Diseño': ['art', 'design', 'music', 'dance', 'fashion', 'film', 'photo', 'paint'],
+            'Ciencias Sociales / Educación': ['edu', 'teach', 'soc', 'hist', 'law', 'polit', 'anthro', 'ling'],
+            'Negocios / Derecho': ['bus', 'market', 'econ', 'law', 'finan', 'entre', 'trade'],
+            'Administración / Contabilidad': ['admin', 'acc', 'audit', 'manage', 'office', 'hr']
+        }
+        
+        for category, keywords in mapping.items():
+            if any(k in major for k in keywords):
+                return category
+        return None
 
     async def train_from_files(self, filenames: list[str] = None):
         all_logs = []
@@ -80,7 +123,7 @@ class MLService:
                     all_logs.append(f"Processing {fname}...")
                     df = pd.read_csv(path)
                     df_cleaned, logs = self.clean_data(df)
-                    all_dfs.extend(logs)
+                    all_logs.extend(logs)
                     all_dfs.append(df_cleaned)
                 else:
                     all_logs.append(f"File {fname} not found, skipping.")
@@ -150,7 +193,7 @@ class MLService:
     def explain_prediction(self, scores_dict: dict):
         """
         Traces the decision path for a specific input and returns an interpretable flow.
-        Also includes the full tree structure for visualization.
+        Also includes the full tree structure for visualization and advanced insights.
         """
         if not os.path.exists(self.model_path):
             return None
@@ -214,11 +257,11 @@ class MLService:
             "full_tree": full_tree,
             "leaf_id": int(leaf_id),
             "insights": {
-                "confidence": main_confidence,
+                "confidence": round(main_confidence * 100, 2),
                 "is_multipotential": has_conflict,
                 "second_option": {
                     "career": second_prediction,
-                    "confidence": second_confidence
+                    "confidence": round(second_confidence * 100, 2)
                 },
                 "analysis": "Perfil con alta claridad vocacional" if not has_conflict else "Perfil multipotencial: Se recomienda entrevista profunda para decidir entre las dos primeras opciones."
             }

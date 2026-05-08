@@ -1,7 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body
 from app.services.ml_service import ml_service
 from app.api import deps
-from typing import Any, List
+from typing import Any, List, Optional
+from pydantic import BaseModel
+
+class TrainRequest(BaseModel):
+    filenames: Optional[List[str]] = None
 
 router = APIRouter()
 
@@ -35,11 +39,12 @@ async def list_datasets() -> Any:
     return ml_service.list_datasets()
 
 @router.post("/train")
-async def train_model(filenames: List[str] = None) -> Any:
+async def train_model(request: TrainRequest = Body(None)) -> Any:
     """
     Trigger model training using specified datasets (or synthetic data if none provided).
     """
     try:
+        filenames = request.filenames if request else None
         stats = await ml_service.train_from_files(filenames=filenames)
         return {"message": "Model trained successfully", "stats": stats}
     except Exception as e:
