@@ -192,10 +192,32 @@ class MLService:
         # Get the full tree map
         full_tree = self.get_full_tree_structure(model)
         
+        # Calculate probabilities for all classes at that leaf
+        class_probs = tree.value[leaf_id][0] / np.sum(tree.value[leaf_id][0])
+        sorted_indices = np.argsort(class_probs)[::-1]
+        
+        main_prediction = str(model.classes_[sorted_indices[0]])
+        main_confidence = float(class_probs[sorted_indices[0]])
+        
+        second_prediction = str(model.classes_[sorted_indices[1]]) if len(sorted_indices) > 1 else None
+        second_confidence = float(class_probs[sorted_indices[1]]) if len(sorted_indices) > 1 else 0
+        
+        # Conflict detection: If the difference is small
+        has_conflict = (main_confidence - second_confidence) < 0.20
+        
         return {
             "decision_path": path,
             "full_tree": full_tree,
-            "leaf_id": int(leaf_id)
+            "leaf_id": int(leaf_id),
+            "insights": {
+                "confidence": main_confidence,
+                "is_multipotential": has_conflict,
+                "second_option": {
+                    "career": second_prediction,
+                    "confidence": second_confidence
+                },
+                "analysis": "Perfil con alta claridad vocacional" if not has_conflict else "Perfil multipotencial: Se recomienda entrevista profunda para decidir entre las dos primeras opciones."
+            }
         }
 
     def get_full_tree_structure(self, model=None) -> Dict[str, Any]:
