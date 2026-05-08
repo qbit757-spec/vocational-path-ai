@@ -12,14 +12,18 @@ from typing import List, Dict, Any
 
 class MLService:
     def __init__(self):
-        self.model_dir = 'app/ml/assets'
-        self.datasets_dir = 'app/ml/datasets'
-        self.model_path = os.path.join(self.model_dir, 'decision_tree_model.joblib')
-        self.features_path = os.path.join(self.model_dir, 'features.joblib')
-        self.stats_path = os.path.join(self.model_dir, 'model_stats.json')
+        # Use absolute paths to avoid issues in Docker
+        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # points to app/
+        self.ml_dir = os.path.join(self.base_dir, 'ml')
+        self.model_dir = os.path.join(self.ml_dir, 'assets')
+        self.datasets_dir = os.path.join(self.ml_dir, 'datasets')
         
         os.makedirs(self.model_dir, exist_ok=True)
         os.makedirs(self.datasets_dir, exist_ok=True)
+        
+        self.model_path = os.path.join(self.model_dir, 'decision_tree_model.joblib')
+        self.features_path = os.path.join(self.model_dir, 'features.joblib')
+        self.stats_path = os.path.join(self.model_dir, 'model_stats.json')
 
     def save_dataset(self, filename: str, content: bytes):
         path = os.path.join(self.datasets_dir, filename)
