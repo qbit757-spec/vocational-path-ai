@@ -181,7 +181,14 @@ class MLService:
         ria_feats = ['R', 'I', 'A', 'S', 'E', 'C']
         def recurse(node: int) -> Dict[str, Any]:
             if tree.children_left[node] == tree.children_right[node]:
-                return {"node_id": int(node), "type": "leaf", "prediction": str(model.classes_[np.argmax(tree.value[node])])}
+                val_array = tree.value[node][0]
+                prob = float(val_array[np.argmax(val_array)] / np.sum(val_array))
+                return {
+                    "node_id": int(node), 
+                    "type": "leaf", 
+                    "prediction": str(model.classes_[np.argmax(val_array)]),
+                    "confidence": round(prob * 100, 2)
+                }
             return {"node_id": int(node), "type": "decision", "feature": ria_feats[tree.feature[node]], "threshold": round(float(tree.threshold[node]), 2), "left": recurse(tree.children_left[node]), "right": recurse(tree.children_right[node])}
         return recurse(0)
 
