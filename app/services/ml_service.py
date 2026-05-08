@@ -27,6 +27,11 @@ class MLService:
         self.features_path = os.path.join(self.model_dir, 'features.joblib')
         self.stats_path = os.path.join(self.model_dir, 'model_stats.json')
 
+    def list_datasets(self):
+        if not os.path.exists(self.datasets_dir): return []
+        files = os.listdir(self.datasets_dir)
+        return [{"filename": f, "size": os.path.getsize(os.path.join(self.datasets_dir, f))} for f in files if f.endswith('.csv')]
+
     def clean_data(self, df: pd.DataFrame):
         logs = []
         df.columns = [str(c).strip().replace('"', '') for c in df.columns]
@@ -41,32 +46,20 @@ class MLService:
         }
         
         if all(len(cols) >= 5 for cols in ria_map.values()):
-            # 1. Basic cleaning
             if 'VCL6' in df.columns:
                 df = df[pd.to_numeric(df['VCL6'], errors='coerce').fillna(0) == 0]
             
-            # 2. Convert to numeric and aggregate
             for cat, cols in ria_map.items():
                 for c in cols: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(3)
                 df[cat] = ((df[cols].mean(axis=1) - 1) / 4) * 10
             
-            # 3. FILTRO DE "PICOS" Y PERFILES PLANOS (Consejo de tu amigo)
-            # Calculamos la desviacion estandar de los 6 puntajes RIASEC
             df['score_std'] = df[['R', 'I', 'A', 'S', 'E', 'C']].std(axis=1)
-            before_flat = len(df)
-            # Eliminamos gente que respondio casi lo mismo en todo (desviacion < 0.8)
             df = df[df['score_std'] > 0.8]
-            logs.append(f"Dropped {before_flat - len(df)} flat profiles (low variance).")
             
-            # 4. Career Mapping
             if 'major' in df.columns:
                 df['Career_Category'] = df['major'].apply(self._map_major_to_category)
                 df = df.dropna(subset=['Career_Category'])
-                
-                # 5. BALANCEO DE PICOS (Capping)
-                # No permitimos que una carrera tenga mas de 10,000 muestras para no sesgar
                 df = df.groupby('Career_Category').apply(lambda x: x.sample(n=min(len(x), 10000), random_state=42)).reset_index(drop=True)
-                logs.append(f"Final balanced samples: {len(df)}")
         
         return df, logs
 
@@ -88,15 +81,13 @@ class MLService:
         return None
 
     async def train_from_files(self, filenames: list[str] = None):
-        all_logs = []
         all_dfs = []
         try:
             for fname in filenames:
                 path = os.path.join(self.datasets_dir, fname)
                 if os.path.exists(path):
                     df = pd.read_csv(path, sep=None, engine='python', on_bad_lines='skip')
-                    df_cleaned, logs = self.clean_data(df)
-                    all_logs.extend(logs)
+                    df_cleaned, _ = self.clean_data(df)
                     all_dfs.append(df_cleaned)
 
             full_df = pd.concat(all_dfs, ignore_index=True)
@@ -104,19 +95,10 @@ class MLService:
             y = full_df['Career_Category']
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
             
-            # TUNED RANDOM FOREST
-            rf_model = RandomForestClassifier(
-                n_estimators=300, 
-                max_depth=20, 
-                min_samples_leaf=4,
-                max_features='sqrt',
-                class_weight='balanced_subsample',
-                random_state=42
-            )
+            rf_model = RandomForestClassifier(n_estimators=300, max_depth=20, class_weight='balanced_subsample', random_state=42)
             rf_model.fit(X_train, y_train)
             accuracy = accuracy_score(y_test, rf_model.predict(X_test))
             
-            # XAI TREE
             tree_model = DecisionTreeClassifier(max_depth=12, random_state=42)
             tree_model.fit(X_train, y_train)
             
@@ -124,14 +106,8 @@ class MLService:
             joblib.dump(tree_model, self.model_path)
             joblib.dump(['R', 'I', 'A', 'S', 'E', 'C'], self.features_path)
             
-            stats = {
-                "accuracy": float(accuracy),
-                "n_samples": len(full_df),
-                "trained_at": datetime.now().isoformat(),
-                "classes": list(rf_model.classes_),
-                "logs": all_logs
-            }
-            with open(self.stats_path, 'w') as f: json.dump(stats, f)
+            stats = {"accuracy": float(accuracy), "n_samples": len(full_df), "trained_at": datetime.now().isoformat(), "classes": list(rf_model.classes_)}
+            with open(stats_path, 'w') as f: json.dump(stats, f)
             return stats
         except Exception as e:
             print(traceback.format_exc())
@@ -150,20 +126,34 @@ class MLService:
         node_indices = node_indicator.indices[node_indicator.indptr[0]:node_indicator.indptr[1]]
         for node_id in node_indices:
             if leaf_id == node_id:
-                path.append({"node_id": int(node_id), "type": "leaf", "prediction": str(tree_model.classes_[np.argmax(tree_model.tree_.value[node_id])])})
+                path.append({
+                    "node_id": int(node_id), 
+                    "type": "leaf", 
+                    "prediction": str(tree_model.classes_[np.argmax(tree_model.tree_.value[node_id])]),
+                    "probability": float(np.max(tree_model.tree_.value[node_id]) / np.sum(tree_model.tree_.value[node_id]))
+                })
             else:
                 f_idx = tree_model.tree_.feature[node_id]
                 feature = features[f_idx]
                 threshold = float(tree_model.tree_.threshold[node_id])
                 val = float(X[0, f_idx])
-                path.append({"node_id": int(node_id), "type": "decision", "feature": feature, "threshold": round(threshold, 2), "value": val})
+                # FIX: Send 'student_value' and full 'condition' string for the Frontend
+                cond_str = f"{feature} {'<=' if val <= threshold else '>'} {round(threshold, 2)}"
+                path.append({
+                    "node_id": int(node_id), 
+                    "type": "decision", 
+                    "feature": feature, 
+                    "threshold": round(threshold, 2), 
+                    "student_value": val, # Changed from 'value'
+                    "condition": cond_str # New field
+                })
         
         probs = rf_model.predict_proba(X)[0]
         classes = rf_model.classes_
         sorted_indices = np.argsort(probs)[::-1]
-        main_pred = str(classes[sorted_indices[0]])
+        
+        # FIX: Send 0-1 decimal confidence (Frontend does * 100)
         main_conf = float(probs[sorted_indices[0]])
-        second_pred = str(classes[sorted_indices[1]])
         second_conf = float(probs[sorted_indices[1]])
         
         return {
@@ -171,10 +161,13 @@ class MLService:
             "full_tree": self.get_full_tree_structure(tree_model),
             "leaf_id": int(leaf_id),
             "insights": {
-                "confidence": round(main_conf * 100, 2),
+                "confidence": main_conf, # Decimal 0.47 instead of 47.27
                 "is_multipotential": (main_conf - second_conf) < 0.12,
-                "second_option": {"career": second_pred, "confidence": round(second_conf * 100, 2)},
-                "analysis": "Perfil con alta claridad vocacional" if (main_conf - second_conf) >= 0.12 else "Perfil con intereses compartidos."
+                "second_option": {
+                    "career": str(classes[sorted_indices[1]]), 
+                    "confidence": round(second_conf * 100, 2)
+                },
+                "analysis": "Perfil con claridad vocacional" if (main_conf - second_conf) >= 0.12 else "Perfil multipotencial"
             }
         }
 
@@ -188,8 +181,8 @@ class MLService:
         return recurse(0)
 
     def get_model_stats(self):
-        if os.path.exists(self.stats_path):
-            with open(self.stats_path, 'r') as f: return json.load(f)
+        if os.path.exists(stats_path):
+            with open(stats_path, 'r') as f: return json.load(f)
         return None
 
 ml_service = MLService()
