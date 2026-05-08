@@ -99,18 +99,30 @@ async def view_all_results(
     result = await db.execute(query)
     results = result.scalars().all()
     
-    return [
-        {
-            "id": r.id, 
-            "user_id": r.user_id, 
-            "student_email": r.user.email if r.user else "Usuario eliminado",
+    formatted_results = []
+    for r in results:
+        riasec_scores = {"R": 0, "I": 0, "A": 0, "S": 0, "E": 0, "C": 0}
+        if r.scores and isinstance(r.scores, dict):
+            for key, val in r.scores.items():
+                if key and key[0] in riasec_scores and key[1:].isdigit():
+                    try: riasec_scores[key[0]] += int(val)
+                    except: pass
+                    
+        prob = 0.0
+        explanation = ml_service.explain_prediction(r.scores or {})
+        if explanation and "insights" in explanation:
+            prob = float(explanation["insights"].get("confidence", 0.0))
+            
+        formatted_results.append({
+            "id": r.id,
             "student_name": r.user.full_name if r.user else "N/A",
-            "recommendation": r.recommendation, 
-            "scores": r.scores,
-            "created_at": r.created_at
-        }
-        for r in results
-    ]
+            "student_email": r.user.email if r.user else "Usuario eliminado",
+            "created_at": r.created_at,
+            "prediction": r.recommendation,
+            "probability": prob,
+            "riasec_scores": riasec_scores
+        })
+    return formatted_results
 
 from app.services.ml_service import ml_service
 
