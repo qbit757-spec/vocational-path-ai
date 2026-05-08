@@ -107,6 +107,10 @@ async def view_all_results(
                 if key and key[0] in riasec_scores and key[1:].isdigit():
                     try: riasec_scores[key[0]] += int(val)
                     except: pass
+            
+            # Normalizar a escala 0-100% para mejor UX (8 preguntas * 5 pts = 40 max)
+            for cat in riasec_scores:
+                riasec_scores[cat] = int((riasec_scores[cat] / 40.0) * 100)
                     
         prob = 0.0
         explanation = ml_service.explain_prediction(r.scores or {})
