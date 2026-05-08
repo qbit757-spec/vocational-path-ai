@@ -8,6 +8,7 @@ import os
 from datetime import datetime
 import json
 import shutil
+from typing import List, Dict, Any
 
 class MLService:
     def __init__(self):
@@ -145,6 +146,7 @@ class MLService:
     def explain_prediction(self, scores_dict: dict):
         """
         Traces the decision path for a specific input and returns an interpretable flow.
+        Also includes the full tree structure for visualization.
         """
         if not os.path.exists(self.model_path):
             return None
@@ -187,6 +189,41 @@ class MLService:
                     "condition": f"{feature} {'<=' if value <= threshold else '>'} {round(threshold, 2)}"
                 })
         
-        return path
+        # Get the full tree map
+        full_tree = self.get_full_tree_structure(model)
+        
+        return {
+            "decision_path": path,
+            "full_tree": full_tree,
+            "leaf_id": int(leaf_id)
+        }
+
+    def get_full_tree_structure(self, model=None) -> Dict[str, Any]:
+        if model is None:
+            if not os.path.exists(self.model_path):
+                return {}
+            model = joblib.load(self.model_path)
+            
+        tree = model.tree_
+        features = joblib.load(self.features_path)
+        
+        def recurse(node: int) -> Dict[str, Any]:
+            if tree.children_left[node] == tree.children_right[node]:  # Leaf
+                return {
+                    "node_id": int(node),
+                    "type": "leaf",
+                    "prediction": str(model.classes_[np.argmax(tree.value[node])])
+                }
+            else:  # Decision node
+                return {
+                    "node_id": int(node),
+                    "type": "decision",
+                    "feature": features[tree.feature[node]],
+                    "threshold": round(float(tree.threshold[node]), 2),
+                    "left": recurse(tree.children_left[node]),
+                    "right": recurse(tree.children_right[node])
+                }
+                
+        return recurse(0)
 
 ml_service = MLService()

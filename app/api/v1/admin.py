@@ -98,7 +98,7 @@ async def explain_result(
         raise HTTPException(status_code=404, detail="Result not found")
     
     # Trace the path using the model
-    explanation_path = ml_service.explain_prediction(db_result.scores)
+    explanation = ml_service.explain_prediction(db_result.scores)
     
     return {
         "result_id": result_id,
@@ -106,5 +106,5 @@ async def explain_result(
         "student_name": db_result.user.full_name if db_result.user else "N/A",
         "recommendation": db_result.recommendation,
         "scores": db_result.scores,
-        "decision_path": explanation_path
+        **explanation
     }
