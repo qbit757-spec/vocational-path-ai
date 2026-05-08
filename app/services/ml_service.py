@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 import joblib
@@ -22,7 +22,6 @@ class MLService:
         os.makedirs(self.model_dir, exist_ok=True)
         os.makedirs(self.datasets_dir, exist_ok=True)
         
-        # We store two models: one for Accuracy (RF) and one for XAI (Tree)
         self.model_path = os.path.join(self.model_dir, 'decision_tree_model.joblib')
         self.rf_model_path = os.path.join(self.model_dir, 'random_forest_model.joblib')
         self.features_path = os.path.join(self.model_dir, 'features.joblib')
@@ -47,36 +46,33 @@ class MLService:
         }
         
         if all(len(cols) >= 5 for cols in ria_map.values()):
-            # Cleaning logic
             if 'VCL6' in df.columns:
                 df = df[pd.to_numeric(df['VCL6'], errors='coerce').fillna(0) == 0]
-            if 'age' in df.columns:
-                df['age'] = pd.to_numeric(df['age'], errors='coerce')
-                df = df[(df['age'] >= 14) & (df['age'] <= 75)]
             
             for cat, cols in ria_map.items():
                 for c in cols: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(3)
+                # Use standard scaling
                 df[cat] = ((df[cols].mean(axis=1) - 1) / 4) * 10
             
             if 'major' in df.columns:
                 df['Career_Category'] = df['major'].apply(self._map_major_to_category)
                 df = df.dropna(subset=['Career_Category'])
-                logs.append(f"Cleaned data: {len(df)} samples.")
+                logs.append(f"Mapped {len(df)} samples.")
         
         return df, logs
 
     def _map_major_to_category(self, major: Any) -> Optional[str]:
         if not isinstance(major, str): return None
         m = str(major).lower().strip()
-        if not m or m == 'nan': return None
+        if not m or m in ['nan', 'none', 'student', 'undecided', 'n/a']: return None
         
         mapping = {
-            'Ingeniería / Tecnología': ['eng', 'comp', 'tech', 'soft', 'civil', 'mech', 'it', 'math', 'phys', 'syst', 'scie', 'data', 'web', 'electr', 'robot', 'arch', 'mining', 'telecom', 'indust'],
-            'Ciencias de la Salud': ['med', 'nurs', 'dent', 'bio', 'phar', 'psyc', 'heal', 'vet', 'thera', 'medic', 'nurse', 'doct', 'physio', 'biol', 'nutri', 'kine', 'obs'],
-            'Artes y Diseño': ['art', 'desig', 'musi', 'danc', 'fash', 'film', 'phot', 'pain', 'lite', 'crea', 'writ', 'dram', 'thea', 'fine', 'graph', 'visu', 'animat'],
-            'Ciencias Sociales / Educación': ['edu', 'teac', 'soc', 'hist', 'law', 'poli', 'anth', 'ling', 'phil', 'coun', 'comm', 'phil', 'geog', 'inter', 'journa', 'sociol', 'human'],
-            'Negocios / Derecho': ['bus', 'mark', 'econ', 'law', 'fina', 'entr', 'trad', 'comm', 'busi', 'lega', 'sale', 'corp', 'logi', 'stock', 'invest'],
-            'Administración / Contabilidad': ['admi', 'acc', 'audi', 'mana', 'offi', 'hr', 'logi', 'reso', 'cont', 'huma', 'secre', 'plan']
+            'Ingeniería / Tecnología': ['eng', 'comp', 'tech', 'soft', 'civil', 'mech', 'it', 'math', 'phys', 'syst', 'scie', 'data', 'web', 'electr', 'robot', 'arch', 'mining', 'telecom', 'indust', 'hardw', 'inform'],
+            'Ciencias de la Salud': ['med', 'nurs', 'dent', 'bio', 'phar', 'psyc', 'heal', 'vet', 'thera', 'medic', 'nurse', 'doct', 'physio', 'biol', 'nutri', 'kine', 'obs', 'dentist', 'clinic'],
+            'Artes y Diseño': ['art', 'desig', 'musi', 'danc', 'fash', 'film', 'phot', 'pain', 'lite', 'crea', 'writ', 'dram', 'thea', 'fine', 'graph', 'visu', 'animat', 'archit', 'interio', 'sculp'],
+            'Ciencias Sociales / Educación': ['edu', 'teac', 'soc', 'hist', 'law', 'poli', 'anth', 'ling', 'phil', 'coun', 'comm', 'phil', 'geog', 'inter', 'journa', 'sociol', 'human', 'educ', 'train', 'ling'],
+            'Negocios / Derecho': ['bus', 'mark', 'econ', 'law', 'fina', 'entr', 'trad', 'comm', 'busi', 'lega', 'sale', 'corp', 'logi', 'stock', 'invest', 'advert', 'insur', 'real', 'estat'],
+            'Administración / Contabilidad': ['admi', 'acc', 'audi', 'mana', 'offi', 'hr', 'logi', 'reso', 'cont', 'huma', 'secre', 'plan', 'manag', 'admin', 'account']
         }
         for category, keywords in mapping.items():
             if any(k in m for k in keywords): return category
@@ -99,13 +95,18 @@ class MLService:
             y = full_df['Career_Category']
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
             
-            # THE "MOST PRECISE" MODEL: Random Forest
-            rf_model = RandomForestClassifier(n_estimators=200, max_depth=20, random_state=42)
+            # THE "MOST PRECISE" MODEL: Tuned Random Forest with class balancing
+            rf_model = RandomForestClassifier(
+                n_estimators=300, 
+                max_depth=25, 
+                class_weight='balanced', 
+                random_state=42
+            )
             rf_model.fit(X_train, y_train)
             accuracy = accuracy_score(y_test, rf_model.predict(X_test))
             
             # THE "EXPLAINABLE" MODEL: Decision Tree (for XAI visualization)
-            tree_model = DecisionTreeClassifier(max_depth=12, random_state=42)
+            tree_model = DecisionTreeClassifier(max_depth=15, criterion='entropy', random_state=42)
             tree_model.fit(X_train, y_train)
             
             joblib.dump(rf_model, self.rf_model_path)
@@ -126,15 +127,13 @@ class MLService:
             raise Exception(f"Training failed: {str(e)}")
 
     def explain_prediction(self, scores_dict: dict):
-        if not os.path.exists(self.model_path): return None
+        if not os.path.exists(self.rf_model_path): return None
         
-        # Use RF for the final confidence/probabilities, but Tree for the path
         rf_model = joblib.load(self.rf_model_path)
         tree_model = joblib.load(self.model_path)
         features = joblib.load(self.features_path)
         X = np.array([[scores_dict.get(f, 0) for f in features]])
         
-        # XAI: Use the Decision Tree to get the interpretable path
         node_indicator = tree_model.decision_path(X)
         leaf_id = tree_model.apply(X)[0]
         path = []
@@ -148,15 +147,14 @@ class MLService:
                 val = float(X[0, tree_model.tree_.feature[node_id]])
                 path.append({"node_id": int(node_id), "type": "decision", "feature": feature, "threshold": round(threshold, 2), "value": val})
         
-        # ACCURACY: Use Random Forest for probabilities and final result
         probs = rf_model.predict_proba(X)[0]
         classes = rf_model.classes_
         sorted_indices = np.argsort(probs)[::-1]
         
         main_pred = str(classes[sorted_indices[0]])
         main_conf = float(probs[sorted_indices[0]])
-        second_pred = str(classes[sorted_indices[1]])
-        second_conf = float(probs[sorted_indices[1]])
+        second_pred = str(classes[sorted_indices[1]]) if len(sorted_indices) > 1 else None
+        second_conf = float(probs[sorted_indices[1]]) if len(sorted_indices) > 1 else 0
         
         return {
             "decision_path": path,
@@ -164,9 +162,9 @@ class MLService:
             "leaf_id": int(leaf_id),
             "insights": {
                 "confidence": round(main_conf * 100, 2),
-                "is_multipotential": (main_conf - second_conf) < 0.15,
+                "is_multipotential": (main_conf - second_conf) < 0.12,
                 "second_option": {"career": second_pred, "confidence": round(second_conf * 100, 2)},
-                "analysis": "Perfil con alta claridad vocacional" if (main_conf - second_conf) >= 0.15 else "Perfil multipotencial detectado."
+                "analysis": "Perfil con alta claridad vocacional" if (main_conf - second_conf) >= 0.12 else "Perfil con intereses compartidos (Multipotencial)."
             }
         }
 
