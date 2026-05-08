@@ -139,7 +139,14 @@ class MLService:
         model = joblib.load(self.rf_model_path)
         tree_model = joblib.load(self.model_path)
         features_48 = joblib.load(self.features_path)
-        classes = joblib.load(os.path.join(self.model_dir, 'classes.joblib'))
+        
+        # Carga segura de clases
+        classes_path = os.path.join(self.model_dir, 'classes.joblib')
+        if os.path.exists(classes_path):
+            classes = joblib.load(classes_path)
+        else:
+            # Fallback si no ha entrenado aún
+            classes = tree_model.classes_
         
         X_48 = np.array([[scores_dict.get(f, 3) for f in features_48]])
         
