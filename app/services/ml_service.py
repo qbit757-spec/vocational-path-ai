@@ -91,7 +91,7 @@ class MLService:
             # Combinar Alineación Teórica + Claridad Vocacional Moderada (El combo perfecto)
             df['score_std'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].std(axis=1)
             df['score_max'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].max(axis=1)
-            mask_clarity = (df['score_std'] > 1.15) & (df['score_max'] >= 4.0)
+            mask_clarity = (df['score_std'] > 0.8) & (df['score_max'] >= 4.0)
             
             mask_final = np.logical_and(mask_alignment, mask_clarity)
             df = df[mask_final]
@@ -138,9 +138,9 @@ class MLService:
             self._log_training("Dividiendo datos en conjuntos de Entrenamiento (80%) y Prueba (20%)...")
             X_train, X_test, y_train, y_test = train_test_split(X, y_mapped, test_size=0.2, random_state=42)
             
-            self._log_training("Entrenando motor principal (XGBoost) con 1500 árboles y profundidad 15...")
+            self._log_training("Entrenando motor principal (XGBoost) con 500 árboles y profundidad 6...")
             # XGBoost
-            model = XGBClassifier(n_estimators=1500, max_depth=15, learning_rate=0.05, objective='multi:softprob', tree_method='hist', random_state=42)
+            model = XGBClassifier(n_estimators=500, max_depth=6, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
             model.fit(X_train, y_train)
             
             self._log_training("Entrenamiento XGBoost finalizado. Evaluando métricas...")
