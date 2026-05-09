@@ -81,7 +81,20 @@ async def submit_test(
         recommendation = str(explanation["insights"]["prediction"])
         
         info = CAREER_INFO.get(recommendation, {'description': 'Perfil vocacional identificado.', 'careers': []})
-        details = f"{info['description']} Carreras sugeridas: {', '.join(info['careers'])}"
+        
+        # Extraer Análisis Avanzado de la IA (Opción secundaria y multipotencialidad)
+        insights = explanation.get("insights", {})
+        second_opt = insights.get("second_option")
+        is_multi = insights.get("is_multipotential")
+        
+        analysis_text = ""
+        if second_opt:
+            if is_multi:
+                analysis_text = f" Análisis Extra de la IA: Tu perfil es altamente Multipotencial. Aunque tu principal ruta es {recommendation}, también tienes aptitudes sobresalientes para estudiar {second_opt['career']} (con un {second_opt['confidence']}% de afinidad secundaria)."
+            else:
+                analysis_text = f" Análisis Extra de la IA: Como ruta alternativa, tu perfil también muestra compatibilidad con {second_opt['career']}."
+
+        details = f"{info['description']} Carreras sugeridas principales: {', '.join(info['careers'])}.{analysis_text}"
         
         db_result = VocationalTestResult(user_id=current_user.id, scores=raw_scores, recommendation=recommendation, details=details)
         db.add(db_result)
