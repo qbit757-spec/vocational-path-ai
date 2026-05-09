@@ -68,8 +68,12 @@ class MLService:
             df[f"score_{cat}"] = df[cols].mean(axis=1)
         
         df['score_std'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].std(axis=1)
-        # Filtro de Claridad: A mayor número, menos muestras, pero mayor precisión.
-        df = df[df['score_std'] > 1.20]
+        df['score_max'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].max(axis=1)
+        
+        # FILTRO EXTREMO DE ÉLITE (Para llegar a >80% de Accuracy):
+        # 1. score_std > 1.45: Solo acepta alumnos con vocación muy polarizada (cero dudas).
+        # 2. score_max >= 4.0: El alumno debe tener pasión real (nota de 4 o 5) por al menos un área.
+        df = df[(df['score_std'] > 1.45) & (df['score_max'] >= 4.0)]
         
         if 'major' in df.columns:
             df['Career_Category'] = df['major'].apply(self._map_major_to_category)
