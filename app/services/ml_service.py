@@ -86,8 +86,15 @@ class MLService:
                 (df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['Dominant_Letter'].isin(['E', 'C']))
             ]
             
-            mask = np.logical_or.reduce(valid_combinations)
-            df = df[mask]
+            mask_alignment = np.logical_or.reduce(valid_combinations)
+            
+            # Combinar Alineación Teórica + Claridad Vocacional Moderada (El combo perfecto)
+            df['score_std'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].std(axis=1)
+            df['score_max'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].max(axis=1)
+            mask_clarity = (df['score_std'] > 1.15) & (df['score_max'] >= 4.0)
+            
+            mask_final = np.logical_and(mask_alignment, mask_clarity)
+            df = df[mask_final]
             
             # Balanceamos para que la IA no se sesgue hacia la carrera con más alumnos
             df = df.groupby('Career_Category').apply(lambda x: x.sample(n=min(len(x), 5000), random_state=42)).reset_index(drop=True)
@@ -131,9 +138,9 @@ class MLService:
             self._log_training("Dividiendo datos en conjuntos de Entrenamiento (80%) y Prueba (20%)...")
             X_train, X_test, y_train, y_test = train_test_split(X, y_mapped, test_size=0.2, random_state=42)
             
-            self._log_training("Entrenando motor principal (XGBoost) con 1000 árboles y profundidad 12...")
+            self._log_training("Entrenando motor principal (XGBoost) con 1500 árboles y profundidad 15...")
             # XGBoost
-            model = XGBClassifier(n_estimators=1000, max_depth=12, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
+            model = XGBClassifier(n_estimators=1500, max_depth=15, learning_rate=0.05, objective='multi:softprob', tree_method='hist', random_state=42)
             model.fit(X_train, y_train)
             
             self._log_training("Entrenamiento XGBoost finalizado. Evaluando métricas...")
