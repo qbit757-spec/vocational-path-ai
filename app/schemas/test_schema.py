@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 class Answer(BaseModel):
@@ -14,7 +14,7 @@ class VocationalTestSubmission(BaseModel):
 
 class VocationalTestResultResponse(BaseModel):
     id: int
-    scores: Dict[str, int]
+    scores: Dict[str, Any]
     riasec_percentages: Dict[str, int] = {}
     recommendation: str
     details: Optional[str]
