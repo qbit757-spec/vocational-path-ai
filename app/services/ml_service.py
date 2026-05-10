@@ -94,14 +94,16 @@ class MLService:
             mask_alignment = np.logical_or.reduce(valid_combinations)
             
             df['score_max'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].max(axis=1)
+            df['score_std'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].std(axis=1)
             
-            # Relajamos un poco el std para no matar a la clase "Artes" (que causaba el bajón a 72%)
-            # pero mantenemos la pasión alta (score_max >= 4.0) y la alineación estricta.
-            df = df[np.logical_and(mask_alignment, df['score_max'] >= 4.0)]
+            # EL EMPUJÓN FINAL (>80%):
+            # Exigimos pasión (max >= 4.0) Y exigimos que no tengan perfiles planos (std > 1.05)
+            # Esto elimina a los "multipotenciales" del entrenamiento, haciendo que la IA
+            # aprenda patrones absolutos y cristalinos.
+            mask_clarity = (df['score_max'] >= 4.0) & (df['score_std'] > 1.05)
             
-            # BALANCEO PERFECTO (La clave para >80%):
-            # En vez de "capear" en 4000, obligamos a que TODAS las clases tengan EXACTAMENTE
-            # la misma cantidad de alumnos que la clase más pequeña. Así la IA no se sesga.
+            df = df[np.logical_and(mask_alignment, mask_clarity)]
+            
             class_counts = df['Career_Category'].value_counts()
             if not class_counts.empty:
                 min_class_size = class_counts.min()
