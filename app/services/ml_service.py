@@ -93,14 +93,20 @@ class MLService:
             ]
             mask_alignment = np.logical_or.reduce(valid_combinations)
             
-            df['score_std'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].std(axis=1)
             df['score_max'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].max(axis=1)
-            mask_clarity = (df['score_std'] > 1.25) & (df['score_max'] >= 4.2)
             
-            df = df[np.logical_and(mask_alignment, mask_clarity)]
+            # Relajamos un poco el std para no matar a la clase "Artes" (que causaba el bajón a 72%)
+            # pero mantenemos la pasión alta (score_max >= 4.0) y la alineación estricta.
+            df = df[np.logical_and(mask_alignment, df['score_max'] >= 4.0)]
             
-            # Balanceamos para que la IA no se sesgue hacia la carrera con más alumnos
-            df = df.groupby('Career_Category').apply(lambda x: x.sample(n=min(len(x), 4000), random_state=42)).reset_index(drop=True)
+            # BALANCEO PERFECTO (La clave para >80%):
+            # En vez de "capear" en 4000, obligamos a que TODAS las clases tengan EXACTAMENTE
+            # la misma cantidad de alumnos que la clase más pequeña. Así la IA no se sesga.
+            class_counts = df['Career_Category'].value_counts()
+            if not class_counts.empty:
+                min_class_size = class_counts.min()
+                sample_size = min(min_class_size, 4000)
+                df = df.groupby('Career_Category').apply(lambda x: x.sample(n=sample_size, random_state=42)).reset_index(drop=True)
         
         features = riasec_cols + [c for c in extra_cols if c in df.columns] + [c for c in demo_cols if c in df.columns]
         return df, features
@@ -141,9 +147,9 @@ class MLService:
             self._log_training("Dividiendo datos en conjuntos de Entrenamiento (80%) y Prueba (20%)...")
             X_train, X_test, y_train, y_test = train_test_split(X, y_mapped, test_size=0.2, random_state=42)
             
-            self._log_training("Entrenando motor principal (XGBoost) con 500 árboles y profundidad 6...")
+            self._log_training("Entrenando motor principal (XGBoost) con 800 árboles y profundidad 8...")
             # XGBoost
-            model = XGBClassifier(n_estimators=500, max_depth=6, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
+            model = XGBClassifier(n_estimators=800, max_depth=8, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
             model.fit(X_train, y_train)
             
             self._log_training("Entrenamiento XGBoost finalizado. Evaluando métricas...")
