@@ -104,11 +104,12 @@ class MLService:
             
             df = df[np.logical_and(mask_alignment, mask_clarity)]
             
-            class_counts = df['Career_Category'].value_counts()
-            if not class_counts.empty:
-                min_class_size = class_counts.min()
-                sample_size = min(min_class_size, 4000)
-                df = df.groupby('Career_Category').apply(lambda x: x.sample(n=sample_size, random_state=42)).reset_index(drop=True)
+            # BALANCEO DE PESOS (La verdadera clave Profesional):
+            # En vez de destruir el dataset cortando todo a 1898 alumnos (lo cual bajó el % a 73%),
+            # vamos a dejar hasta 6000 alumnos por carrera.
+            # ¿Y qué pasa con "Negocios" que solo tiene 1898? 
+            # Lo arreglamos en XGBoost con "Pesos Dinámicos" (sample_weights).
+            df = df.groupby('Career_Category').apply(lambda x: x.sample(n=min(len(x), 6000), random_state=42)).reset_index(drop=True)
         
         features = riasec_cols + [c for c in extra_cols if c in df.columns] + [c for c in demo_cols if c in df.columns]
         return df, features
@@ -149,10 +150,14 @@ class MLService:
             self._log_training("Dividiendo datos en conjuntos de Entrenamiento (80%) y Prueba (20%)...")
             X_train, X_test, y_train, y_test = train_test_split(X, y_mapped, test_size=0.2, random_state=42)
             
-            self._log_training("Entrenando motor principal (XGBoost) con 800 árboles y profundidad 8...")
+            self._log_training("Calculando pesos balanceados (Sample Weights) para evitar sesgo de clases menores...")
+            from sklearn.utils.class_weight import compute_sample_weight
+            sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
+            
+            self._log_training("Entrenando motor principal (XGBoost) con 800 árboles y profundidad 8 (Con Pesos Dinámicos)...")
             # XGBoost
             model = XGBClassifier(n_estimators=800, max_depth=8, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
-            model.fit(X_train, y_train)
+            model.fit(X_train, y_train, sample_weight=sample_weights)
             
             self._log_training("Entrenamiento XGBoost finalizado. Evaluando métricas...")
             y_pred = model.predict(X_test)
