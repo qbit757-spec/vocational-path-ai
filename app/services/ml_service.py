@@ -87,21 +87,19 @@ class MLService:
             df['margin'] = margin
             
             # FILTRO DE ARQUETIPO ESTRICTO Y ALINEACIÓN TEÓRICA
-            # Restringimos a que la letra dominante y las reglas secundarias tengan sentido lógico
+            # Eliminamos los bloqueos artificiales para permitir que la IA aprenda perfiles híbridos (Ej: Tech Entrepreneur).
             valid_combinations = [
-                # Ingeniería Clásica (R+I) O Sistemas (I+C). 
-                # Permitimos CUALQUIER letra dominante para Sistemas porque existen ingenieros Sociales (Scrum/UX) y Emprendedores (Tech Leads).
+                # Ingeniería: Clásica (R+I) o Sistemas/Software (I+C)
                 ((df['Career_Category'] == 'Ingeniería y Tecnología') & (((df['score_R'] >= 3.5) & (df['score_I'] >= 3.0)) | ((df['score_I'] >= 3.5) & (df['score_C'] >= 3.0)))),
                 
-                # Salud: Los médicos y psicólogos son S e I. Pero rara vez son extremadamente "Convencionales/Calculadores" (C > 4.0).
-                # Si alguien tiene C muy alto, su lugar está en Sistemas/Datos, no en un hospital.
-                ((df['Career_Category'] == 'Ciencias de la Salud') & (df['Dominant_Letter'].isin(['I', 'S'])) & (df['score_S'] >= 3.5) & (df['score_I'] >= 3.0) & (df['score_C'] < 4.0)),
+                # Salud: Social + Investigativo
+                ((df['Career_Category'] == 'Ciencias de la Salud') & (df['score_S'] >= 3.5) & (df['score_I'] >= 3.0)),
                 
-                # Artes
-                ((df['Career_Category'] == 'Artes, Humanidades y Educación') & (df['Dominant_Letter'].isin(['A', 'S'])) & (df['score_A'] >= 3.5) & (df['score_S'] >= 3.0)),
+                # Artes: Artístico + Social
+                ((df['Career_Category'] == 'Artes, Humanidades y Educación') & (df['score_A'] >= 3.5) & (df['score_S'] >= 3.0)),
                 
-                # Negocios: PROHIBIMOS que los genios analíticos (I > 4.0) terminen en negocios básicos. 
-                ((df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['Dominant_Letter'].isin(['E', 'C'])) & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0) & (df['score_I'] < 4.0))
+                # Negocios: Emprendedor + Convencional
+                ((df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0))
             ]
             df = df[np.logical_or.reduce(valid_combinations)]
             
