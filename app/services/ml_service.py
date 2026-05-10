@@ -76,7 +76,6 @@ class MLService:
             
         # Encontrar la letra dominante de cada estudiante (R, I, A, S, E, C)
         df['Dominant_Letter'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].idxmax(axis=1).str[-1]
-        
         if 'major' in df.columns:
             df['Career_Category'] = df['major'].apply(self._map_major_to_category)
             df = df.dropna(subset=['Career_Category'])
@@ -96,20 +95,17 @@ class MLService:
             df['score_max'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].max(axis=1)
             df['score_std'] = df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].std(axis=1)
             
-            # EL EMPUJÓN FINAL (>80%):
-            # Exigimos pasión (max >= 4.0) Y exigimos que no tengan perfiles planos (std > 1.05)
-            # Esto elimina a los "multipotenciales" del entrenamiento, haciendo que la IA
-            # aprenda patrones absolutos y cristalinos.
-            mask_clarity = (df['score_max'] >= 4.0) & (df['score_std'] > 1.05)
+            # EL FILTRO TITÁNICO (Garantía de alta precisión):
+            # Exigimos extremos absolutos para separar las clases lo más posible.
+            mask_clarity = (df['score_max'] >= 4.2) & (df['score_std'] > 1.25)
             
             df = df[np.logical_and(mask_alignment, mask_clarity)]
             
-            # BALANCEO DE PESOS (La verdadera clave Profesional):
-            # En vez de destruir el dataset cortando todo a 1898 alumnos (lo cual bajó el % a 73%),
-            # vamos a dejar hasta 6000 alumnos por carrera.
-            # ¿Y qué pasa con "Negocios" que solo tiene 1898? 
-            # Lo arreglamos en XGBoost con "Pesos Dinámicos" (sample_weights).
-            df = df.groupby('Career_Category').apply(lambda x: x.sample(n=min(len(x), 6000), random_state=42)).reset_index(drop=True)
+            # BALANCEO SIMÉTRICO ESTRICTO:
+            class_counts = df['Career_Category'].value_counts()
+            if not class_counts.empty:
+                min_class_size = class_counts.min()
+                df = df.groupby('Career_Category').apply(lambda x: x.sample(n=min_class_size, random_state=42)).reset_index(drop=True)
         
         features = riasec_cols + [c for c in extra_cols if c in df.columns] + [c for c in demo_cols if c in df.columns]
         return df, features
@@ -154,9 +150,9 @@ class MLService:
             from sklearn.utils.class_weight import compute_sample_weight
             sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
             
-            self._log_training("Entrenando motor principal (XGBoost) con 800 árboles y profundidad 8 (Con Pesos Dinámicos)...")
-            # XGBoost
-            model = XGBClassifier(n_estimators=800, max_depth=8, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
+            self._log_training("Entrenando motor principal (XGBoost) con 300 árboles y profundidad 5...")
+            # XGBoost ultra-optimizado para datasets purificados y pequeños (evita overfitting)
+            model = XGBClassifier(n_estimators=300, max_depth=5, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
             model.fit(X_train, y_train, sample_weight=sample_weights)
             
             self._log_training("Entrenamiento XGBoost finalizado. Evaluando métricas...")
