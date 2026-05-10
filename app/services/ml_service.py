@@ -85,14 +85,25 @@ class MLService:
             margin = sorted_scores[:, -1] - sorted_scores[:, -2]
             df['margin'] = margin
             
-            # FILTRO DE ARQUETIPO ESTRICTO (Con soporte para Ingenieros de Sistemas)
-            df = df[
-                # Ingeniería Clásica (Mecánica/Civil = R+I) O Ingeniería de Sistemas/Software (Lógica/Datos = I+C)
-                ((df['Career_Category'] == 'Ingeniería y Tecnología') & (((df['score_R'] >= 3.5) & (df['score_I'] >= 3.0)) | ((df['score_I'] >= 3.5) & (df['score_C'] >= 3.0)))) |
-                ((df['Career_Category'] == 'Ciencias de la Salud') & (df['score_S'] >= 3.5) & (df['score_I'] >= 3.0)) |
-                ((df['Career_Category'] == 'Artes, Humanidades y Educación') & (df['score_A'] >= 3.5) & (df['score_S'] >= 3.0)) |
-                ((df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0))
+            # FILTRO DE ARQUETIPO ESTRICTO Y ALINEACIÓN TEÓRICA
+            # Restringimos a que la letra dominante y las reglas secundarias tengan sentido lógico
+            valid_combinations = [
+                # Ingeniería Clásica (R+I) O Sistemas (I+C). 
+                # Permitimos CUALQUIER letra dominante para Sistemas porque existen ingenieros Sociales (Scrum/UX) y Emprendedores (Tech Leads).
+                ((df['Career_Category'] == 'Ingeniería y Tecnología') & (((df['score_R'] >= 3.5) & (df['score_I'] >= 3.0)) | ((df['score_I'] >= 3.5) & (df['score_C'] >= 3.0)))),
+                
+                # Salud: Los médicos y psicólogos son S e I. Pero rara vez son extremadamente "Convencionales/Calculadores" (C > 4.0).
+                # Si alguien tiene C muy alto, su lugar está en Sistemas/Datos, no en un hospital.
+                ((df['Career_Category'] == 'Ciencias de la Salud') & (df['Dominant_Letter'].isin(['I', 'S'])) & (df['score_S'] >= 3.5) & (df['score_I'] >= 3.0) & (df['score_C'] < 4.0)),
+                
+                # Artes
+                ((df['Career_Category'] == 'Artes, Humanidades y Educación') & (df['Dominant_Letter'].isin(['A', 'S'])) & (df['score_A'] >= 3.5) & (df['score_S'] >= 3.0)),
+                
+                # Negocios: PROHIBIMOS que los genios analíticos (I > 4.0) terminen en negocios básicos. 
+                ((df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['Dominant_Letter'].isin(['E', 'C'])) & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0) & (df['score_I'] < 4.0))
             ]
+            import numpy as np
+            df = df[np.logical_or.reduce(valid_combinations)]
             
             # TOP-K PURITY SAMPLING (La técnica para obtener +2000 muestras con máxima precisión):
             # En lugar de filtrar por un margen estricto (que nos dejaba con 200 muestras) o elegir al azar,
