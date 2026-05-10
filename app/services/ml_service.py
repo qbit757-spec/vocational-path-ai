@@ -277,13 +277,57 @@ class MLService:
                     "condition": f"{ria_feats[f_idx]} {'>' if val > threshold else '<='} {round(threshold, 2)}"
                 })
         
+        def _generate_psychological_profile(scores: dict) -> str:
+            ria_labels = {
+                'R': 'Realista (Enfoque Práctico, Máquinas y Herramientas)', 
+                'I': 'Investigativo (Enfoque Analítico, Lógica y Ciencia)', 
+                'A': 'Artístico (Enfoque Creativo, Innovación y Diseño)', 
+                'S': 'Social (Enfoque Humano, Empatía y Enseñanza)', 
+                'E': 'Emprendedor (Enfoque de Liderazgo, Persuasión y Negocios)', 
+                'C': 'Convencional (Enfoque de Orden, Estructura y Datos)'
+            }
+            
+            ria_desc = {
+                'R': 'Las personas con alta puntuación Realista prefieren trabajar con objetos físicos, herramientas, maquinaria o al aire libre. Son hacedores prácticos que resuelven problemas tangibles.',
+                'I': 'Las personas con alta puntuación Investigativa son pensadores analíticos. Les apasiona resolver problemas abstractos, la ciencia, las matemáticas y comprender el "por qué" de las cosas.',
+                'A': 'Las personas con alta puntuación Artística son creadores originales. Valoran la libertad, la innovación, el diseño, la expresión personal y rechazan la monotonía.',
+                'S': 'Las personas con alta puntuación Social están fuertemente orientadas a las relaciones. Su mayor motivación profesional proviene de ayudar, curar, enseñar o colaborar profundamente con otros humanos.',
+                'E': 'Las personas con alta puntuación Emprendedora son líderes natos. Disfrutan persuadir, dirigir proyectos complejos, tomar decisiones estratégicas y asumir riesgos para alcanzar el éxito organizacional.',
+                'C': 'Las personas con alta puntuación Convencional son los pilares de la organización. Sobresalen gestionando grandes volúmenes de datos, estructurando procesos y manteniendo la precisión absoluta.'
+            }
+
+            sorted_scores = sorted([(cat, scores.get(f"score_{cat}", 3.0)) for cat in ria_labels.keys()], key=lambda x: x[1], reverse=True)
+            top1, top2 = sorted_scores[0], sorted_scores[1]
+            lowest = sorted_scores[-1]
+            
+            base = f"Tu Inteligencia Vocacional está dominada por un perfil {ria_labels[top1[0]]}, fuertemente respaldado por tu lado {ria_labels[top2[0]]}.\n\n"
+            base += f"📌 **Desglose de tu Personalidad:**\n- **Tu Fuerza Principal ({top1[0]}):** {ria_desc[top1[0]]}\n- **Tu Aliado Estratégico ({top2[0]}):** {ria_desc[top2[0]]}\n- **Tu Punto Ciego ({lowest[0]}):** Es tu puntuación más baja. Esto significa que los trabajos puramente basados en actividades de tipo '{ria_labels[lowest[0]].split(' (')[0]}' probablemente te causarán profunda frustración o aburrimiento.\n\n"
+            
+            base += "💡 **La Paradoja de la Carrera (¿Por qué la IA me recomendó esto?):**\n"
+            
+            if top1[0] in ['I', 'E'] and top2[0] in ['I', 'E']:
+                ext = "Esta rara combinación de Lógica Analítica (I) y Liderazgo/Negocios (E) crea al 'Tech Entrepreneur'. Si actualmente estudias algo puramente técnico (como Ingeniería) pero la IA te recomienda Negocios, NO significa que te equivocaste de carrera. Significa que tu destino no es quedarte programando en un sótano; naciste para ser **Gerente de Proyectos (PM), CTO, o Fundador de tu propia StartUp tecnológica**. Tu valor real está en dirigir y comercializar la tecnología, no solo en picar código."
+            elif top1[0] in ['S', 'I'] and top2[0] in ['S', 'I']:
+                ext = "Tienes una mente brillante para resolver problemas (I), pero tu vocación real está orientada a las personas (S). Si estudias Ingeniería o Tecnología y la IA te sugiere Salud o Educación, es porque tu perfil indica que deberías orientarte a roles humanos dentro de la tecnología, como **Scrum Master, Investigador UX (Experiencia de Usuario) o Educador Tech**. Si estás buscando un cambio total, tu naturaleza te llama a las Ciencias de la Salud, donde la ciencia rigurosa y la empatía humana se fusionan."
+            elif top1[0] == 'S' and top2[0] == 'C':
+                ext = "Amas interactuar con humanos (S) pero exiges extrema organización y estructura (C). Este es el arquetipo de los administradores de hospitales, rectores educativos o gerentes de recursos humanos. Necesitas un entorno donde puedas ayudar a la sociedad, pero de manera ordenada, jerárquica e institucional."
+            elif top1[0] in ['R', 'I'] and top2[0] in ['R', 'I', 'C']:
+                ext = "¡Eres el arquetipo clásico STEM (Ciencia, Tecnología, Ingeniería y Matemáticas)! Tienes una obsesión técnica e investigativa pura. Esto explica perfectamente por qué rechazas los roles puramente sociales, de ventas o de arte. Tu éxito radica en la inmersión profunda: laboratorios, arquitectura de software, inteligencia artificial, o ingeniería estructural de alta complejidad."
+            elif top1[0] == 'C' and top2[0] in ['I', 'E']:
+                ext = "El orden absoluto es tu superpoder. Tu capacidad para estructurar información caótica (C) sumada a tu lógica implacable (I/E) te hace la pieza clave para la Ciencia de Datos (Data Science), Finanzas Cuantitativas, Auditoría de Seguridad o Arquitectura Cloud. Todo lo que esté desorganizado, tú naciste para sistematizarlo."
+            else:
+                ext = "El modelo matemático ha detectado un perfil altamente multidisciplinario. Si sientes que el resultado no coincide exactamente con tu título universitario actual, es porque tu personalidad es un 'Híbrido Profesional'. La IA te sugiere buscar una especialización o rol dentro de tu industria que te permita mezclar tus habilidades principales sin forzarte a hacer tareas relacionadas con tus puntuaciones más bajas."
+                
+            return base + ext
+            
         return {
             "insights": {
                 "confidence": main_conf,
                 "is_multipotential": bool((probs[idx[0]] - probs[idx[1]]) < 0.12),
                 "second_option": {"career": str(classes[idx[1]]), "confidence": float(round(probs[idx[1]] * 100, 2))},
                 "prediction": str(classes[idx[0]]),
-                "diagnosis_type": "Alta Certeza" if main_conf > 0.65 else "Exploratorio"
+                "diagnosis_type": "Alta Certeza" if main_conf > 0.65 else "Exploratorio",
+                "psychological_analysis": _generate_psychological_profile(processed_inputs)
             },
             "decision_path": path,
             "full_tree": self.get_full_tree_structure(tree_model)

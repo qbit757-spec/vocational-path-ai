@@ -88,13 +88,15 @@ async def submit_test(
         is_multi = insights.get("is_multipotential")
         
         analysis_text = ""
+        psycho_text = insights.get("psychological_analysis", "")
+        
         if second_opt:
             if is_multi:
                 analysis_text = f" Análisis Extra de la IA: Tu perfil es altamente Multipotencial. Aunque tu principal ruta es {recommendation}, también tienes aptitudes sobresalientes para estudiar {second_opt['career']} (con un {second_opt['confidence']}% de afinidad secundaria)."
             else:
                 analysis_text = f" Análisis Extra de la IA: Como ruta alternativa, tu perfil también muestra compatibilidad con {second_opt['career']}."
 
-        details = f"{info['description']} Carreras sugeridas principales: {', '.join(info['careers'])}.{analysis_text}"
+        details = f"{info['description']} Carreras sugeridas principales: {', '.join(info['careers'])}.\n\n🤖 DIAGNÓSTICO PSICOLÓGICO: {psycho_text}\n\n{analysis_text}"
         
         db_result = VocationalTestResult(user_id=current_user.id, scores=raw_scores, recommendation=recommendation, details=details)
         db.add(db_result)
