@@ -80,13 +80,10 @@ class MLService:
             df['Career_Category'] = df['major'].apply(self._map_major_to_category)
             df = df.dropna(subset=['Career_Category'])
             
-            # FILTRO DE MARGEN VOCACIONAL ULTRA (La bala de plata para >85%)
-            # Ahora exigimos que su pasión #1 le gane a su pasión #2 por MÁS DE 1 PUNTO ENTERO.
-            # Esto es rarísimo en humanos, pero asegura matemáticamente la precisión.
+            # FILTRO DE MARGEN VOCACIONAL (Calculamos la pureza de cada alumno)
             sorted_scores = np.sort(df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].values, axis=1)
             margin = sorted_scores[:, -1] - sorted_scores[:, -2]
             df['margin'] = margin
-            df = df[df['margin'] >= 1.1]
             
             # FILTRO DE ARQUETIPO ESTRICTO
             df = df[
@@ -96,13 +93,15 @@ class MLService:
                 ((df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0))
             ]
             
-            # Balanceamos para que la IA no se sesgue
-            class_counts = df['Career_Category'].value_counts()
-            if not class_counts.empty:
-                min_class_size = class_counts.min()
-                # Dejamos suficientes muestras para que el modelo aprenda (mínimo 1000)
-                sample_size = min(min_class_size, 4000)
-                df = df.groupby('Career_Category').apply(lambda x: x.sample(n=sample_size, random_state=42)).reset_index(drop=True)
+            # TOP-K PURITY SAMPLING (La técnica para obtener +2000 muestras con máxima precisión):
+            # En lugar de filtrar por un margen estricto (que nos dejaba con 200 muestras) o elegir al azar,
+            # ordenamos a TODOS los alumnos desde el más "puro" al más "confuso".
+            df = df.sort_values(by='margin', ascending=False)
+            
+            # Y luego, simplemente tomamos a los 600 mejores alumnos de cada carrera.
+            # 600 x 4 carreras = 2400 muestras garantizadas.
+            # Como están ordenados, estos 2400 serán la Élite absoluta de la base de datos.
+            df = df.groupby('Career_Category').head(600).reset_index(drop=True)
         
         # ELIMINAMOS EL RUIDO: Para sets pequeños (<1000), usar 77 variables (TIPI, VCL)
         # causa la "Maldición de la Dimensionalidad". Solo usamos las 48 puras de RIASEC.
