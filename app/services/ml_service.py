@@ -81,6 +81,7 @@ class MLService:
             df = df.dropna(subset=['Career_Category'])
             
             # FILTRO DE MARGEN VOCACIONAL (Calculamos la pureza de cada alumno)
+            import numpy as np
             sorted_scores = np.sort(df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]].values, axis=1)
             margin = sorted_scores[:, -1] - sorted_scores[:, -2]
             df['margin'] = margin
@@ -102,7 +103,6 @@ class MLService:
                 # Negocios: PROHIBIMOS que los genios analíticos (I > 4.0) terminen en negocios básicos. 
                 ((df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['Dominant_Letter'].isin(['E', 'C'])) & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0) & (df['score_I'] < 4.0))
             ]
-            import numpy as np
             df = df[np.logical_or.reduce(valid_combinations)]
             
             # TOP-K PURITY SAMPLING (La técnica para obtener +2000 muestras con máxima precisión):
