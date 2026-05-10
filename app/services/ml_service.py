@@ -85,9 +85,10 @@ class MLService:
             margin = sorted_scores[:, -1] - sorted_scores[:, -2]
             df['margin'] = margin
             
-            # FILTRO DE ARQUETIPO ESTRICTO
+            # FILTRO DE ARQUETIPO ESTRICTO (Con soporte para Ingenieros de Sistemas)
             df = df[
-                ((df['Career_Category'] == 'Ingeniería y Tecnología') & (df['score_R'] >= 3.5) & (df['score_I'] >= 3.0)) |
+                # Ingeniería Clásica (Mecánica/Civil = R+I) O Ingeniería de Sistemas/Software (Lógica/Datos = I+C)
+                ((df['Career_Category'] == 'Ingeniería y Tecnología') & (((df['score_R'] >= 3.5) & (df['score_I'] >= 3.0)) | ((df['score_I'] >= 3.5) & (df['score_C'] >= 3.0)))) |
                 ((df['Career_Category'] == 'Ciencias de la Salud') & (df['score_S'] >= 3.5) & (df['score_I'] >= 3.0)) |
                 ((df['Career_Category'] == 'Artes, Humanidades y Educación') & (df['score_A'] >= 3.5) & (df['score_S'] >= 3.0)) |
                 ((df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0))
