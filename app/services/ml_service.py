@@ -103,9 +103,11 @@ class MLService:
             # Como están ordenados, estos 2400 serán la Élite absoluta de la base de datos.
             df = df.groupby('Career_Category').head(600).reset_index(drop=True)
         
-        # ELIMINAMOS EL RUIDO: Para sets pequeños (<1000), usar 77 variables (TIPI, VCL)
-        # causa la "Maldición de la Dimensionalidad". Solo usamos las 48 puras de RIASEC.
-        features = riasec_cols
+        # REDUCCIÓN DE DIMENSIONALIDAD AL EXTREMO (El truco para >90%):
+        # En lugar de pasarle a XGBoost las 48 preguntas individuales (que tienen ruido estadístico),
+        # le pasamos ÚNICAMENTE los 6 promedios agregados (score_R, score_I, etc.).
+        # Al evaluar esto sobre nuestros 2400 alumnos élite, la IA trazará límites perfectos.
+        features = [f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]
         return df, features
 
     def _map_major_to_category(self, major: Any) -> Optional[str]:
@@ -215,8 +217,16 @@ class MLService:
         features = joblib.load(self.features_path)
         classes = joblib.load(self.classes_path)
         
+        # PROCESAMIENTO INTELIGENTE: Si el modelo espera 'score_R' (reducción de dimensionalidad)
+        # pero el front envía R1, R2, R3... los calculamos al vuelo.
+        processed_inputs = inputs.copy()
+        for cat in ['R', 'I', 'A', 'S', 'E', 'C']:
+            if f"score_{cat}" in features and f"score_{cat}" not in processed_inputs:
+                raw_cat_vals = [v for k, v in inputs.items() if k.startswith(cat) and k[1:].isdigit()]
+                processed_inputs[f"score_{cat}"] = float(np.mean(raw_cat_vals)) if raw_cat_vals else 3.0
+        
         # 1. Prediction (XGBoost)
-        X_vec = [inputs.get(f, (3 if f.startswith(('R','I','A','S','E','C')) else 0)) for f in features]
+        X_vec = [processed_inputs.get(f, (3 if f.startswith(('R','I','A','S','E','C')) else 0)) for f in features]
         probs = model.predict_proba(np.array([X_vec]))[0]
         idx = np.argsort(probs)[::-1]
         
@@ -224,8 +234,7 @@ class MLService:
         ria_feats = ['R', 'I', 'A', 'S', 'E', 'C']
         X_xai = []
         for cat in ria_feats:
-            cols = [f for f in features if f.startswith(cat)]
-            avg = np.mean([inputs.get(c, 3) for c in cols])
+            avg = processed_inputs.get(f"score_{cat}", 3.0)
             X_xai.append(((avg - 1) / 4) * 10)
         
         X_xai_arr = np.array([X_xai])
