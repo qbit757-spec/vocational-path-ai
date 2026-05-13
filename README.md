@@ -1,4 +1,4 @@
-# Vocational Guidance AI - UGEL 03
+# Sistema web para mejorar el proceso de elección de carreras profesionales - UGEL 03
 
 Sistema de Orientación Vocacional basado en Inteligencia Artificial para estudiantes de secundaria, utilizando el modelo RIASEC (Holland Codes) y algoritmos de Árboles de Decisión.
 
@@ -46,4 +46,4 @@ python scripts/train_model.py
 ```
 
 ---
-Desarrollado para el fortalecimiento de la orientación vocacional en UGEL 03.
+Desarrollado para la mejora del proceso de elección de carreras profesionales en estudiantes de 3.º y 4.º de secundaria en Lima Centro (UGEL 03).

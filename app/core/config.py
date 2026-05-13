@@ -4,7 +4,7 @@ import os
 from pydantic import field_validator
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Vocational Guidance System - UGEL 03"
+    PROJECT_NAME: str = "Sistema web para mejorar el proceso de elección de carreras profesionales en estudiantes de 3.º y 4.º de secundaria usando algoritmo de árbol de decisión en una Institución Educativa en la zona UGEL 03 en Lima Centro, Perú"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     

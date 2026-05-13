@@ -1,4 +1,4 @@
-# 📘 Documentación de la API - Vocational Guidance AI (UGEL 03)
+# 📘 Documentación de la API - Sistema de Elección de Carreras (UGEL 03)
 
 Esta API proporciona el motor de inteligencia artificial y la gestión de datos para el Sistema de Orientación Vocacional.
 

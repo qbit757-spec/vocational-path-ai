@@ -21,7 +21,7 @@ class MLService:
         os.makedirs(self.model_dir, exist_ok=True)
         os.makedirs(self.datasets_dir, exist_ok=True)
         
-        self.model_path = os.path.join(self.model_dir, 'xgboost_model.joblib')
+        self.model_path = os.path.join(self.model_dir, 'primary_tree_model.joblib')
         self.tree_path = os.path.join(self.model_dir, 'decision_tree_model.joblib')
         self.features_path = os.path.join(self.model_dir, 'features.joblib')
         self.stats_path = os.path.join(self.model_dir, 'model_stats.json')
@@ -135,7 +135,7 @@ class MLService:
 
     async def train_from_files(self, filenames: list[str] = None):
         try:
-            with open(self.log_path, 'w') as f: f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando proceso de entrenamiento del Modelo Híbrido...\n")
+            with open(self.log_path, 'w') as f: f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando proceso de entrenamiento del Árbol de Decisión...\n")
             
             self._log_training(f"Cargando dataset: {filenames[0] if filenames else 'default'}")
             path = os.path.join(self.datasets_dir, filenames[0])
@@ -160,25 +160,21 @@ class MLService:
             from sklearn.utils.class_weight import compute_sample_weight
             sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
             
-            self._log_training("Entrenando motor principal (XGBoost) con 300 árboles y profundidad 5...")
-            # XGBoost ultra-optimizado para datasets purificados y pequeños (evita overfitting)
-            model = XGBClassifier(n_estimators=300, max_depth=5, learning_rate=0.03, objective='multi:softprob', tree_method='hist', random_state=42)
-            model.fit(X_train, y_train, sample_weight=sample_weights)
+            self._log_training("Entrenando motor principal (Decision Tree)...")
+            # Decision Tree optimizado para el dataset
+            model = DecisionTreeClassifier(max_depth=12, random_state=42, class_weight='balanced')
+            model.fit(X_train, y_train)
             
-            self._log_training("Entrenamiento XGBoost finalizado. Evaluando métricas...")
+            self._log_training("Entrenamiento finalizado. Evaluando métricas...")
             y_pred = model.predict(X_test)
             report = classification_report(y_test, y_pred, output_dict=True)
             
-            self._log_training("Entrenando modelo sustituto visual (Decision Tree XAI) para generación de grafos...")
-            # XAI Tree
-            X_xai = full_df[[f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]]
-            tree_model = DecisionTreeClassifier(max_depth=12, random_state=42)
-            tree_model.fit(X_xai, y)
-            
-            self._log_training("Guardando modelos (.joblib) y actualizando métricas estáticas...")
+            self._log_training("Guardando modelo (.joblib) y actualizando métricas estáticas...")
             joblib.dump(model, self.model_path)
-            joblib.dump(tree_model, self.tree_path)
+            # También lo guardamos como tree_path para compatibilidad con la visualización
+            joblib.dump(model, self.tree_path)
             joblib.dump(features, self.features_path)
+            joblib.dump(y_codes.categories, self.classes_path)
             from sklearn.metrics import roc_auc_score
             y_pred_proba = model.predict_proba(X_test)
             try:
@@ -205,9 +201,9 @@ class MLService:
                 "n_samples": len(full_df),
                 "support": int(report['macro avg']['support']),
                 "trained_at": datetime.now().isoformat(),
-                "algorithm": "XGBoost",
-                "trees": 300,
-                "coverage_riasec": round(report['macro avg']['recall'] * 1.05, 4),
+                "algorithm": "Árbol de Decisión",
+                "max_depth": 12,
+                "coverage_riasec": round(report['macro avg']['recall'] * 1.0, 4),
                 "classes_metrics": classes_metrics
             }
             with open(self.stats_path, 'w') as f: json.dump(stats, f)
@@ -223,7 +219,6 @@ class MLService:
     def explain_prediction(self, inputs: dict):
         if not os.path.exists(self.model_path): return None
         model = joblib.load(self.model_path)
-        tree_model = joblib.load(self.tree_path)
         features = joblib.load(self.features_path)
         classes = joblib.load(self.classes_path)
         
@@ -235,21 +230,16 @@ class MLService:
                 raw_cat_vals = [v for k, v in inputs.items() if k.startswith(cat) and k[1:].isdigit()]
                 processed_inputs[f"score_{cat}"] = float(np.mean(raw_cat_vals)) if raw_cat_vals else 3.0
         
-        # 1. Prediction (XGBoost)
-        X_vec = [processed_inputs.get(f, (3 if f.startswith(('R','I','A','S','E','C')) else 0)) for f in features]
-        probs = model.predict_proba(np.array([X_vec]))[0]
+        # 1. Prediction and Decision Path (Decision Tree)
+        ria_feats = [f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]
+        X_vec = [processed_inputs.get(f, 3.0) for f in features]
+        X_arr = np.array([X_vec])
+        
+        probs = model.predict_proba(X_arr)[0]
         idx = np.argsort(probs)[::-1]
         
-        # 2. XAI Decision Path (Decision Tree)
-        ria_feats = ['R', 'I', 'A', 'S', 'E', 'C']
-        X_xai = []
-        for cat in ria_feats:
-            avg = processed_inputs.get(f"score_{cat}", 3.0)
-            X_xai.append(((avg - 1) / 4) * 10)
-        
-        X_xai_arr = np.array([X_xai])
-        node_indicator = tree_model.decision_path(X_xai_arr)
-        leaf_id = tree_model.apply(X_xai_arr)[0]
+        node_indicator = model.decision_path(X_arr)
+        leaf_id = model.apply(X_arr)[0]
         path = []
         node_indices = node_indicator.indices[node_indicator.indptr[0]:node_indicator.indptr[1]]
         
@@ -268,13 +258,14 @@ class MLService:
                     "value": float(round(main_conf, 4))
                 })
             else:
-                f_idx = tree_model.tree_.feature[node_id]
-                threshold = float(tree_model.tree_.threshold[node_id])
-                val = float(X_xai_arr[0, f_idx])
+                f_idx = model.tree_.feature[node_id]
+                threshold = float(model.tree_.threshold[node_id])
+                val = float(X_arr[0, f_idx])
+                feat_name = features[f_idx].replace('score_', '')
                 path.append({
-                    "node_id": int(node_id), "type": "decision", "feature": ria_feats[f_idx], 
+                    "node_id": int(node_id), "type": "decision", "feature": feat_name, 
                     "threshold": round(threshold, 2), "student_value": val, 
-                    "condition": f"{ria_feats[f_idx]} {'>' if val > threshold else '<='} {round(threshold, 2)}"
+                    "condition": f"{feat_name} {'>' if val > threshold else '<='} {round(threshold, 2)}"
                 })
         
         def _generate_psychological_profile(scores: dict) -> str:
