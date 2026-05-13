@@ -321,7 +321,7 @@ class MLService:
                 "psychological_analysis": _generate_psychological_profile(processed_inputs)
             },
             "decision_path": path,
-            "full_tree": self.get_full_tree_structure(tree_model)
+            "full_tree": self.get_full_tree_structure(model)
         }
 
     def get_full_tree_structure(self, model) -> Dict[str, Any]:
