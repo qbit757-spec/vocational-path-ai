@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 # from xgboost import XGBClassifier (Eliminado para usar Árbol de Decisión)
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 import joblib
@@ -190,14 +191,15 @@ class MLService:
             from sklearn.utils.class_weight import compute_sample_weight
             sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
             
-            self._log_training("Entrenando motor principal (Decision Tree) con criterio de Entropía...")
-            # Decision Tree optimizado: Depth 14 y Criterion 'entropy' para mayor discriminación
-            model = DecisionTreeClassifier(
-                criterion='entropy', 
-                max_depth=14, 
-                min_samples_leaf=5,
-                random_state=42, 
-                class_weight='balanced'
+            self._log_training("Entrenando motor de Bosque Aleatorio (Random Forest) para 8 categorías...")
+            # Random Forest es mucho más potente para manejar 8 clases con alta precisión
+            model = RandomForestClassifier(
+                n_estimators=150,
+                max_depth=18,
+                min_samples_leaf=3,
+                random_state=42,
+                class_weight='balanced',
+                n_jobs=-1 # Usar todos los núcleos para velocidad
             )
             model.fit(X_train, y_train)
             
@@ -237,8 +239,9 @@ class MLService:
                 "n_samples": len(full_df),
                 "support": int(report['macro avg']['support']),
                 "trained_at": datetime.now().isoformat(),
-                "algorithm": "Árbol de Decisión Optimizado (RIASEC + Personality)",
-                "max_depth": 14,
+                "algorithm": "Random Forest (8 categorías)",
+                "max_depth": 18,
+                "n_estimators": 150,
                 "coverage_riasec": round(report['macro avg']['recall'] * 1.0, 4),
                 "classes_metrics": classes_metrics
             }
@@ -266,7 +269,7 @@ class MLService:
                 raw_cat_vals = [v for k, v in inputs.items() if k.startswith(cat) and k[1:].isdigit()]
                 processed_inputs[f"score_{cat}"] = float(np.mean(raw_cat_vals)) if raw_cat_vals else 3.0
         
-        # 1. Prediction and Decision Path (Decision Tree)
+        # 1. Prediction and explanation
         ria_feats = [f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]
         X_vec = [processed_inputs.get(f, 3.0) for f in features]
         X_arr = np.array([X_vec])
@@ -274,13 +277,16 @@ class MLService:
         probs = model.predict_proba(X_arr)[0]
         idx = np.argsort(probs)[::-1]
         
-        node_indicator = model.decision_path(X_arr)
-        leaf_id = model.apply(X_arr)[0]
-        path = []
-        node_indices = node_indicator.indices[node_indicator.indptr[0]:node_indicator.indptr[1]]
-        
         main_conf = float(probs[idx[0]])
         main_pred = str(classes[idx[0]])
+        
+        # Para Random Forest, el "decision path" se extrae de uno de sus árboles representativos
+        # o se muestra como importancia de características. Aquí usamos el primer árbol para mantener la visualización.
+        representative_tree = model.estimators_[0]
+        node_indicator = representative_tree.decision_path(X_arr)
+        leaf_id = representative_tree.apply(X_arr)[0]
+        path = []
+        node_indices = node_indicator.indices[node_indicator.indptr[0]:node_indicator.indptr[1]]
         
         for node_id in node_indices:
             if leaf_id == node_id:
@@ -288,16 +294,13 @@ class MLService:
                     "node_id": int(node_id), 
                     "type": "leaf", 
                     "prediction": main_pred,
-                    "confidence": float(round(main_conf, 4)),
-                    "percentage": float(round(main_conf, 4)),
-                    "probability": float(round(main_conf, 4)),
-                    "value": float(round(main_conf, 4))
+                    "confidence": float(round(main_conf, 4))
                 })
             else:
-                f_idx = model.tree_.feature[node_id]
-                threshold = float(model.tree_.threshold[node_id])
+                f_idx = representative_tree.tree_.feature[node_id]
+                threshold = float(representative_tree.tree_.threshold[node_id])
                 val = float(X_arr[0, f_idx])
-                feat_name = features[f_idx].replace('score_', '')
+                feat_name = features[f_idx].replace('p_', '').replace('score_', '')
                 path.append({
                     "node_id": int(node_id), "type": "decision", "feature": feat_name, 
                     "threshold": round(threshold, 2), "student_value": val, 
@@ -361,8 +364,9 @@ class MLService:
         }
 
     def get_full_tree_structure(self, model) -> Dict[str, Any]:
-        tree = model.tree_
-        # Obtener los nombres de las features reales usadas por el modelo
+        # Para Random Forest, visualizamos el primer árbol del bosque
+        tree_model = model.estimators_[0]
+        tree = tree_model.tree_
         feature_names = joblib.load(self.features_path)
         
         def recurse(node: int) -> Dict[str, Any]:
@@ -373,12 +377,8 @@ class MLService:
                     "node_id": int(node), 
                     "type": "leaf", 
                     "prediction": str(model.classes_[np.argmax(val_array)]),
-                    "confidence": float(round(prob, 4)),
-                    "percentage": float(round(prob, 4)),
-                    "probability": float(round(prob, 4)),
-                    "value": float(round(prob, 4))
+                    "confidence": float(round(prob, 4))
                 }
-            # Usar el nombre real de la feature desde la lista cargada
             feat_name = feature_names[tree.feature[node]].replace('p_', '').replace('score_', '')
             return {
                 "node_id": int(node), 
