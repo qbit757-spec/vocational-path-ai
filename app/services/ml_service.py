@@ -108,16 +108,30 @@ class MLService:
             # ordenamos a TODOS los alumnos desde el más "puro" al más "confuso".
             df = df.sort_values(by='margin', ascending=False)
             
-            # Y luego, simplemente tomamos a los 600 mejores alumnos de cada carrera.
-            # 600 x 4 carreras = 2400 muestras garantizadas.
-            # Como están ordenados, estos 2400 serán la Élite absoluta de la base de datos.
-            df = df.groupby('Career_Category').head(600).reset_index(drop=True)
+            # Y luego, simplemente tomamos a los 500 mejores alumnos de cada carrera.
+            # 500 x 4 carreras = 2000 muestras garantizadas de máxima pureza.
+            # Como están ordenados, estos 2000 serán la Élite absoluta de la base de datos.
+            df = df.groupby('Career_Category').head(500).reset_index(drop=True)
         
+        # --- NUEVA MEJORA: AGREGAR RASGOS DE PERSONALIDAD (BIG FIVE) ---
+        # El TIPI (Ten-Item Personality Inventory) mide:
+        # 1. Extraversion, 2. Agreeableness, 3. Conscientiousness, 4. Emotional Stability, 5. Openness
+        if all(f'TIPI{i}' in df.columns for i in range(1, 11)):
+            df['p_extraversion'] = (df['TIPI1'] + (7 - df['TIPI6'])) / 2
+            df['p_agreeableness'] = ((7 - df['TIPI2']) + df['TIPI7']) / 2
+            df['p_conscientiousness'] = (df['TIPI3'] + (7 - df['TIPI8'])) / 2
+            df['p_stability'] = ((7 - df['TIPI4']) + df['TIPI9']) / 2
+            df['p_openness'] = (df['TIPI5'] + (7 - df['TIPI10'])) / 2
+            
+            personality_features = ['p_extraversion', 'p_agreeableness', 'p_conscientiousness', 'p_stability', 'p_openness']
+        else:
+            personality_features = []
+
         # REDUCCIÓN DE DIMENSIONALIDAD AL EXTREMO (El truco para >90%):
         # En lugar de pasarle a XGBoost las 48 preguntas individuales (que tienen ruido estadístico),
-        # le pasamos ÚNICAMENTE los 6 promedios agregados (score_R, score_I, etc.).
-        # Al evaluar esto sobre nuestros 2400 alumnos élite, la IA trazará límites perfectos.
-        features = [f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]
+        # le pasamos ÚNICAMENTE los 6 promedios agregados (score_R, score_I, etc.) + Personalidad.
+        # Al evaluar esto sobre nuestros alumnos élite, la IA trazará límites perfectos.
+        features = [f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']] + personality_features
         return df, features
 
     def _map_major_to_category(self, major: Any) -> Optional[str]:
@@ -160,9 +174,15 @@ class MLService:
             from sklearn.utils.class_weight import compute_sample_weight
             sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
             
-            self._log_training("Entrenando motor principal (Decision Tree)...")
-            # Decision Tree optimizado para el dataset
-            model = DecisionTreeClassifier(max_depth=12, random_state=42, class_weight='balanced')
+            self._log_training("Entrenando motor principal (Decision Tree) con criterio de Entropía...")
+            # Decision Tree optimizado: Depth 14 y Criterion 'entropy' para mayor discriminación
+            model = DecisionTreeClassifier(
+                criterion='entropy', 
+                max_depth=14, 
+                min_samples_leaf=5,
+                random_state=42, 
+                class_weight='balanced'
+            )
             model.fit(X_train, y_train)
             
             self._log_training("Entrenamiento finalizado. Evaluando métricas...")
@@ -201,8 +221,8 @@ class MLService:
                 "n_samples": len(full_df),
                 "support": int(report['macro avg']['support']),
                 "trained_at": datetime.now().isoformat(),
-                "algorithm": "Árbol de Decisión",
-                "max_depth": 12,
+                "algorithm": "Árbol de Decisión Optimizado (RIASEC + Personality)",
+                "max_depth": 14,
                 "coverage_riasec": round(report['macro avg']['recall'] * 1.0, 4),
                 "classes_metrics": classes_metrics
             }
@@ -326,7 +346,9 @@ class MLService:
 
     def get_full_tree_structure(self, model) -> Dict[str, Any]:
         tree = model.tree_
-        ria_feats = ['R', 'I', 'A', 'S', 'E', 'C']
+        # Obtener los nombres de las features reales usadas por el modelo
+        feature_names = joblib.load(self.features_path)
+        
         def recurse(node: int) -> Dict[str, Any]:
             if tree.children_left[node] == tree.children_right[node]:
                 val_array = tree.value[node][0]
@@ -340,7 +362,16 @@ class MLService:
                     "probability": float(round(prob, 4)),
                     "value": float(round(prob, 4))
                 }
-            return {"node_id": int(node), "type": "decision", "feature": ria_feats[tree.feature[node]], "threshold": round(float(tree.threshold[node]), 2), "left": recurse(tree.children_left[node]), "right": recurse(tree.children_right[node])}
+            # Usar el nombre real de la feature desde la lista cargada
+            feat_name = feature_names[tree.feature[node]].replace('p_', '').replace('score_', '')
+            return {
+                "node_id": int(node), 
+                "type": "decision", 
+                "feature": feat_name, 
+                "threshold": round(float(tree.threshold[node]), 2), 
+                "left": recurse(tree.children_left[node]), 
+                "right": recurse(tree.children_right[node])
+            }
         return recurse(0)
 
     def get_model_stats(self):
