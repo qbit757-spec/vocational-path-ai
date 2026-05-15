@@ -89,17 +89,29 @@ class MLService:
             # FILTRO DE ARQUETIPO ESTRICTO Y ALINEACIÓN TEÓRICA
             # Eliminamos los bloqueos artificiales para permitir que la IA aprenda perfiles híbridos (Ej: Tech Entrepreneur).
             valid_combinations = [
-                # Ingeniería: Clásica (R+I) o Sistemas/Software (I+C)
-                ((df['Career_Category'] == 'Ingeniería y Tecnología') & (((df['score_R'] >= 3.5) & (df['score_I'] >= 3.0)) | ((df['score_I'] >= 3.5) & (df['score_C'] >= 3.0)))),
+                # Tecnología: Investigativo + Convencional/Realista
+                ((df['Career_Category'] == 'Tecnología y Software') & (df['score_I'] >= 3.5) & ((df['score_C'] >= 3.0) | (df['score_R'] >= 2.5))),
                 
-                # Salud: Social + Investigativo
-                ((df['Career_Category'] == 'Ciencias de la Salud') & (df['score_S'] >= 3.5) & (df['score_I'] >= 3.0)),
+                # Ingeniería: Realista + Investigativo
+                ((df['Career_Category'] == 'Ingeniería y Construcción') & (df['score_R'] >= 3.5) & (df['score_I'] >= 3.0)),
                 
-                # Artes: Artístico + Social
-                ((df['Career_Category'] == 'Artes, Humanidades y Educación') & (df['score_A'] >= 3.5) & (df['score_S'] >= 3.0)),
+                # Medicina: Investigativo + Social
+                ((df['Career_Category'] == 'Ciencias Médicas y Salud') & (df['score_I'] >= 3.5) & (df['score_S'] >= 3.0)),
+                
+                # Psicología: Social + Investigativo
+                ((df['Career_Category'] == 'Psicología y Bienestar') & (df['score_S'] >= 3.5) & (df['score_I'] >= 3.0)),
                 
                 # Negocios: Emprendedor + Convencional
-                ((df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0))
+                ((df['Career_Category'] == 'Negocios y Finanzas') & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0)),
+                
+                # Derecho: Emprendedor + Investigativo/Social
+                ((df['Career_Category'] == 'Derecho y Leyes') & (df['score_E'] >= 3.5) & ((df['score_I'] >= 3.0) | (df['score_S'] >= 3.0))),
+                
+                # Artes: Artístico + Cualquier otro (Flexibilidad creativa)
+                ((df['Career_Category'] == 'Artes y Diseño') & (df['score_A'] >= 3.5)),
+                
+                # Educación: Social + Artístico/Investigativo
+                ((df['Career_Category'] == 'Educación y Humanidades') & (df['score_S'] >= 3.5) & ((df['score_A'] >= 3.0) | (df['score_I'] >= 3.0)))
             ]
             df = df[np.logical_or.reduce(valid_combinations)]
             
@@ -138,10 +150,14 @@ class MLService:
         if not isinstance(major, str): return None
         m = str(major).lower().strip()
         mapping = {
-            'Ingeniería y Tecnología': ['eng', 'comp', 'tech', 'soft', 'civil', 'mech', 'it', 'math', 'phys', 'syst', 'scie', 'data', 'web', 'electr', 'robot', 'mining', 'telecom', 'indust'],
-            'Ciencias de la Salud': ['med', 'nurs', 'dent', 'bio', 'phar', 'psyc', 'heal', 'vet', 'thera', 'medic', 'nurse', 'doct', 'physio', 'biol', 'nutri', 'kine', 'obs'],
-            'Artes, Humanidades y Educación': ['art', 'desig', 'musi', 'danc', 'fash', 'film', 'phot', 'pain', 'lite', 'crea', 'writ', 'dram', 'thea', 'fine', 'graph', 'visu', 'animat', 'edu', 'teac', 'soc', 'hist', 'poli', 'anth', 'ling', 'phil', 'coun', 'comm', 'geog', 'inter', 'journa', 'sociol', 'human'],
-            'Negocios, Gestión y Derecho': ['bus', 'mark', 'econ', 'law', 'fina', 'entr', 'trad', 'comm', 'busi', 'lega', 'sale', 'corp', 'logi', 'stock', 'invest', 'admi', 'acc', 'audi', 'mana', 'offi', 'hr', 'logi', 'reso', 'cont', 'huma', 'secre', 'plan']
+            'Tecnología y Software': ['comp', 'soft', 'it', 'data', 'web', 'syst', 'inform', 'code', 'prog', 'cyber', 'network'],
+            'Ingeniería y Construcción': ['eng', 'tech', 'civil', 'mech', 'electr', 'robot', 'mining', 'telecom', 'indust', 'physics', 'math', 'const'],
+            'Ciencias Médicas y Salud': ['med', 'nurs', 'dent', 'bio', 'phar', 'heal', 'vet', 'thera', 'physio', 'biol', 'nutri', 'kine', 'obs'],
+            'Psicología y Bienestar': ['psyc', 'coun', 'social work', 'therapy', 'mental', 'behavior'],
+            'Negocios y Finanzas': ['bus', 'mark', 'econ', 'fina', 'entr', 'trad', 'busi', 'sale', 'corp', 'stock', 'invest', 'admi', 'acc', 'audi', 'mana', 'offi', 'hr', 'logi'],
+            'Derecho y Leyes': ['law', 'lega', 'jur', 'poli', 'crim', 'justice'],
+            'Artes y Diseño': ['art', 'desig', 'musi', 'danc', 'fash', 'film', 'phot', 'pain', 'crea', 'dram', 'thea', 'fine', 'graph', 'visu', 'animat', 'arch'],
+            'Educación y Humanidades': ['edu', 'teac', 'soc', 'hist', 'anth', 'ling', 'phil', 'comm', 'geog', 'inter', 'journa', 'sociol', 'human', 'lite', 'writ', 'lang']
         }
         for category, keywords in mapping.items():
             if any(k in m for k in keywords): return category
