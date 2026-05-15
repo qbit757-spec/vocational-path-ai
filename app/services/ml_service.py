@@ -273,7 +273,10 @@ class MLService:
                     "node_id": int(node_id), 
                     "type": "leaf", 
                     "prediction": main_pred,
-                    "confidence": float(round(main_conf, 4))
+                    "confidence": float(round(main_conf, 4)),
+                    "percentage": float(round(main_conf, 4)),
+                    "probability": float(round(main_conf, 4)),
+                    "value": float(round(main_conf, 4))
                 })
             else:
                 f_idx = model.tree_.feature[node_id]
@@ -354,7 +357,10 @@ class MLService:
                     "node_id": int(node), 
                     "type": "leaf", 
                     "prediction": str(model.classes_[np.argmax(val_array)]),
-                    "confidence": float(round(prob, 4))
+                    "confidence": float(round(prob, 4)),
+                    "percentage": float(round(prob, 4)),
+                    "probability": float(round(prob, 4)),
+                    "value": float(round(prob, 4))
                 }
             feat_name = feature_names[tree.feature[node]].replace('p_', '').replace('score_', '')
             return {
