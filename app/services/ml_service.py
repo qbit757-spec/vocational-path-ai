@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 # from xgboost import XGBClassifier (Eliminado para usar Árbol de Decisión)
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
+# from sklearn.ensemble import RandomForestClassifier (Revertido a Árbol Único)
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 import joblib
@@ -90,29 +90,17 @@ class MLService:
             # FILTRO DE ARQUETIPO ESTRICTO Y ALINEACIÓN TEÓRICA
             # Eliminamos los bloqueos artificiales para permitir que la IA aprenda perfiles híbridos (Ej: Tech Entrepreneur).
             valid_combinations = [
-                # Tecnología: Investigativo + Convencional/Realista
-                ((df['Career_Category'] == 'Tecnología y Software') & (df['score_I'] >= 3.5) & ((df['score_C'] >= 3.0) | (df['score_R'] >= 2.5))),
+                # Ingeniería: Clásica (R+I) o Sistemas/Software (I+C)
+                ((df['Career_Category'] == 'Ingeniería y Tecnología') & (((df['score_R'] >= 3.5) & (df['score_I'] >= 3.0)) | ((df['score_I'] >= 3.5) & (df['score_C'] >= 3.0)))),
                 
-                # Ingeniería: Realista + Investigativo
-                ((df['Career_Category'] == 'Ingeniería y Construcción') & (df['score_R'] >= 3.5) & (df['score_I'] >= 3.0)),
+                # Salud: Social + Investigativo
+                ((df['Career_Category'] == 'Ciencias de la Salud') & (df['score_S'] >= 3.5) & (df['score_I'] >= 3.0)),
                 
-                # Medicina: Investigativo + Social
-                ((df['Career_Category'] == 'Ciencias Médicas y Salud') & (df['score_I'] >= 3.5) & (df['score_S'] >= 3.0)),
-                
-                # Psicología: Social + Investigativo
-                ((df['Career_Category'] == 'Psicología y Bienestar') & (df['score_S'] >= 3.5) & (df['score_I'] >= 3.0)),
+                # Artes: Artístico + Social
+                ((df['Career_Category'] == 'Artes, Humanidades y Educación') & (df['score_A'] >= 3.5) & (df['score_S'] >= 3.0)),
                 
                 # Negocios: Emprendedor + Convencional
-                ((df['Career_Category'] == 'Negocios y Finanzas') & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0)),
-                
-                # Derecho: Emprendedor + Investigativo/Social
-                ((df['Career_Category'] == 'Derecho y Leyes') & (df['score_E'] >= 3.5) & ((df['score_I'] >= 3.0) | (df['score_S'] >= 3.0))),
-                
-                # Artes: Artístico + Cualquier otro (Flexibilidad creativa)
-                ((df['Career_Category'] == 'Artes y Diseño') & (df['score_A'] >= 3.5)),
-                
-                # Educación: Social + Artístico/Investigativo
-                ((df['Career_Category'] == 'Educación y Humanidades') & (df['score_S'] >= 3.5) & ((df['score_A'] >= 3.0) | (df['score_I'] >= 3.0)))
+                ((df['Career_Category'] == 'Negocios, Gestión y Derecho') & (df['score_E'] >= 3.5) & (df['score_C'] >= 3.0))
             ]
             df = df[np.logical_or.reduce(valid_combinations)]
             
@@ -151,14 +139,10 @@ class MLService:
         if not isinstance(major, str): return None
         m = str(major).lower().strip()
         mapping = {
-            'Tecnología y Software': ['comp', 'soft', 'it', 'data', 'web', 'syst', 'inform', 'code', 'prog', 'cyber', 'network'],
-            'Ingeniería y Construcción': ['eng', 'tech', 'civil', 'mech', 'electr', 'robot', 'mining', 'telecom', 'indust', 'physics', 'math', 'const'],
-            'Ciencias Médicas y Salud': ['med', 'nurs', 'dent', 'bio', 'phar', 'heal', 'vet', 'thera', 'physio', 'biol', 'nutri', 'kine', 'obs'],
-            'Psicología y Bienestar': ['psyc', 'coun', 'social work', 'therapy', 'mental', 'behavior'],
-            'Negocios y Finanzas': ['bus', 'mark', 'econ', 'fina', 'entr', 'trad', 'busi', 'sale', 'corp', 'stock', 'invest', 'admi', 'acc', 'audi', 'mana', 'offi', 'hr', 'logi'],
-            'Derecho y Leyes': ['law', 'lega', 'jur', 'poli', 'crim', 'justice'],
-            'Artes y Diseño': ['art', 'desig', 'musi', 'danc', 'fash', 'film', 'phot', 'pain', 'crea', 'dram', 'thea', 'fine', 'graph', 'visu', 'animat', 'arch'],
-            'Educación y Humanidades': ['edu', 'teac', 'soc', 'hist', 'anth', 'ling', 'phil', 'comm', 'geog', 'inter', 'journa', 'sociol', 'human', 'lite', 'writ', 'lang']
+            'Ingeniería y Tecnología': ['eng', 'comp', 'tech', 'soft', 'civil', 'mech', 'it', 'math', 'phys', 'syst', 'scie', 'data', 'web', 'electr', 'robot', 'mining', 'telecom', 'indust'],
+            'Ciencias de la Salud': ['med', 'nurs', 'dent', 'bio', 'phar', 'psyc', 'heal', 'vet', 'thera', 'medic', 'nurse', 'doct', 'physio', 'biol', 'nutri', 'kine', 'obs'],
+            'Artes, Humanidades y Educación': ['art', 'desig', 'musi', 'danc', 'fash', 'film', 'phot', 'pain', 'lite', 'crea', 'writ', 'dram', 'thea', 'fine', 'graph', 'visu', 'animat', 'edu', 'teac', 'soc', 'hist', 'poli', 'anth', 'ling', 'phil', 'coun', 'comm', 'geog', 'inter', 'journa', 'sociol', 'human'],
+            'Negocios, Gestión y Derecho': ['bus', 'mark', 'econ', 'law', 'fina', 'entr', 'trad', 'comm', 'busi', 'lega', 'sale', 'corp', 'logi', 'stock', 'invest', 'admi', 'acc', 'audi', 'mana', 'offi', 'hr', 'logi', 'reso', 'cont', 'huma', 'secre', 'plan']
         }
         for category, keywords in mapping.items():
             if any(k in m for k in keywords): return category
@@ -191,15 +175,14 @@ class MLService:
             from sklearn.utils.class_weight import compute_sample_weight
             sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
             
-            self._log_training("Entrenando motor de Bosque Aleatorio (Random Forest) para 8 categorías...")
-            # Random Forest es mucho más potente para manejar 8 clases con alta precisión
-            model = RandomForestClassifier(
-                n_estimators=150,
-                max_depth=18,
-                min_samples_leaf=3,
-                random_state=42,
-                class_weight='balanced',
-                n_jobs=-1 # Usar todos los núcleos para velocidad
+            self._log_training("Entrenando motor principal (Decision Tree) con criterio de Entropía...")
+            # Decision Tree optimizado: Depth 15 para 4 categorías
+            model = DecisionTreeClassifier(
+                criterion='entropy', 
+                max_depth=15, 
+                min_samples_leaf=5,
+                random_state=42, 
+                class_weight='balanced'
             )
             model.fit(X_train, y_train)
             
@@ -239,9 +222,8 @@ class MLService:
                 "n_samples": len(full_df),
                 "support": int(report['macro avg']['support']),
                 "trained_at": datetime.now().isoformat(),
-                "algorithm": "Random Forest (8 categorías)",
-                "max_depth": 18,
-                "n_estimators": 150,
+                "algorithm": "Árbol de Decisión Optimizado (4 categorías)",
+                "max_depth": 15,
                 "coverage_riasec": round(report['macro avg']['recall'] * 1.0, 4),
                 "classes_metrics": classes_metrics
             }
@@ -269,7 +251,7 @@ class MLService:
                 raw_cat_vals = [v for k, v in inputs.items() if k.startswith(cat) and k[1:].isdigit()]
                 processed_inputs[f"score_{cat}"] = float(np.mean(raw_cat_vals)) if raw_cat_vals else 3.0
         
-        # 1. Prediction and explanation
+        # 1. Prediction and Decision Path
         ria_feats = [f"score_{cat}" for cat in ['R', 'I', 'A', 'S', 'E', 'C']]
         X_vec = [processed_inputs.get(f, 3.0) for f in features]
         X_arr = np.array([X_vec])
@@ -280,11 +262,8 @@ class MLService:
         main_conf = float(probs[idx[0]])
         main_pred = str(classes[idx[0]])
         
-        # Para Random Forest, el "decision path" se extrae de uno de sus árboles representativos
-        # o se muestra como importancia de características. Aquí usamos el primer árbol para mantener la visualización.
-        representative_tree = model.estimators_[0]
-        node_indicator = representative_tree.decision_path(X_arr)
-        leaf_id = representative_tree.apply(X_arr)[0]
+        node_indicator = model.decision_path(X_arr)
+        leaf_id = model.apply(X_arr)[0]
         path = []
         node_indices = node_indicator.indices[node_indicator.indptr[0]:node_indicator.indptr[1]]
         
@@ -297,8 +276,8 @@ class MLService:
                     "confidence": float(round(main_conf, 4))
                 })
             else:
-                f_idx = representative_tree.tree_.feature[node_id]
-                threshold = float(representative_tree.tree_.threshold[node_id])
+                f_idx = model.tree_.feature[node_id]
+                threshold = float(model.tree_.threshold[node_id])
                 val = float(X_arr[0, f_idx])
                 feat_name = features[f_idx].replace('p_', '').replace('score_', '')
                 path.append({
@@ -364,9 +343,7 @@ class MLService:
         }
 
     def get_full_tree_structure(self, model) -> Dict[str, Any]:
-        # Para Random Forest, visualizamos el primer árbol del bosque
-        tree_model = model.estimators_[0]
-        tree = tree_model.tree_
+        tree = model.tree_
         feature_names = joblib.load(self.features_path)
         
         def recurse(node: int) -> Dict[str, Any]:
