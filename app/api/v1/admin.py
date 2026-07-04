@@ -161,3 +161,21 @@ async def explain_result(
         "scores": db_result.scores,
         **explanation
     }
+
+@router.delete("/reset-students")
+async def reset_students(
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(deps.get_current_admin_user)
+):
+    from app.db.models.user_model import User
+    from app.db.models.test_model import VocationalTestResult
+    
+    # 1. Delete all test results
+    await db.execute(delete(VocationalTestResult))
+    
+    # 2. Delete all users that are not admin
+    await db.execute(delete(User).where(User.role != "admin"))
+    
+    await db.commit()
+    return {"message": "All students and their test results have been deleted successfully. System is reset."}
+

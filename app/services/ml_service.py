@@ -152,7 +152,21 @@ class MLService:
         try:
             with open(self.log_path, 'w') as f: f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando proceso de entrenamiento del Árbol de Decisión...\n")
             
-            self._log_training(f"Cargando dataset: {filenames[0] if filenames else 'default'}")
+            if not filenames:
+                csv_files = [f for f in os.listdir(self.datasets_dir) if f.endswith('.csv')]
+                if csv_files:
+                    filenames = [csv_files[0]]
+                else:
+                    src_path = os.path.join(self.model_dir, 'sample_dataset.csv')
+                    if os.path.exists(src_path):
+                        import shutil
+                        dest_path = os.path.join(self.datasets_dir, 'sample_dataset.csv')
+                        shutil.copy(src_path, dest_path)
+                        filenames = ['sample_dataset.csv']
+                    else:
+                        raise Exception("No hay datasets disponibles para entrenar.")
+            
+            self._log_training(f"Cargando dataset: {filenames[0]}")
             path = os.path.join(self.datasets_dir, filenames[0])
             full_df = pd.read_csv(path, sep='\t' if '\t' in open(path).readline() else ',', on_bad_lines='skip')
             
